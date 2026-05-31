@@ -1,0 +1,14 @@
+{
+  "fishing_cooldown": {
+    "description": "钓鱼冷却时间（秒）",
+    "type": "int",
+    "default": 14400,
+    "hint": "每次钓鱼后需要等待的冷却时间，默认4小时（14400秒）"
+  },
+  "shop_refresh_cooldown": {
+    "description": "商店刷新冷却时间（秒）",
+    "type": "int",
+    "default": 3600,
+    "hint": "每次手动刷新商店后需要等待的冷却时间，默认1小时（3600秒）"
+  }
+}
