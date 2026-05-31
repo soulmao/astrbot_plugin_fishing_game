@@ -16,7 +16,8 @@ from .llm_tools import (
     FishingCdTool, FishingBuyTool, FishingGiveTool,
     FishingRankTool, FishingMyRodsTool, FishingEquipTool,
     FishingMyBaitsTool, FishingEquipBaitTool, FishingShopRefreshTool,
-    FishingCollectionTool
+    FishingCollectionTool,
+    FishingAuctionTool, FishingEnchantTool, FishingEnchantUpgradeTool,
 )
 import random
 import time
@@ -33,7 +34,13 @@ class FishingGamePlugin(Star):
         # 读取冷却时间配置（秒）
         self.fishing_cooldown = self.config.get("fishing_cooldown", 4 * 3600)
         self.shop_refresh_cooldown = self.config.get("shop_refresh_cooldown", 1 * 3600)
-        logger.info(f"钓鱼游戏冷却配置: 钓鱼={self.fishing_cooldown}s, 商店刷新={self.shop_refresh_cooldown}s")
+        # 读取拍卖行配置
+        self.auction_default_price_percent = self.config.get("auction_default_price_percent", 0.30)
+        self.auction_price_range_percent = self.config.get("auction_price_range_percent", 0.30)
+        self.auction_duration_hours = self.config.get("auction_duration_hours", 24)
+        logger.info(f"钓鱼游戏配置: 钓鱼CD={self.fishing_cooldown}s, 商店刷新CD={self.shop_refresh_cooldown}s, "
+                    f"拍卖默认价格={self.auction_default_price_percent}, 拍卖浮动={self.auction_price_range_percent}, "
+                    f"拍卖保留时长={self.auction_duration_hours}h")
         
         self.storage = StorageManager(self)
         self.commands = FishingGameCommands(self, self.storage)
@@ -44,6 +51,10 @@ class FishingGamePlugin(Star):
         # 每日自动刷新定时任务（每天0点重置）
         self._refresh_task = None
         self._schedule_daily_refresh()
+        
+        # 拍卖行过期检查定时任务（每小时检查）
+        self._auction_check_task = None
+        self._schedule_auction_check()
         logger.info("钓鱼游戏插件已加载")
     
     def _register_llm_tools(self):
@@ -65,6 +76,9 @@ class FishingGamePlugin(Star):
             FishingEquipBaitTool(plugin=self),
             FishingShopRefreshTool(plugin=self),
             FishingCollectionTool(plugin=self),
+            FishingAuctionTool(plugin=self),
+            FishingEnchantTool(plugin=self),
+            FishingEnchantUpgradeTool(plugin=self),
         ]
         self.context.add_llm_tools(*tools)
         logger.info(f"已注册 {len(tools)} 个 Fishing FunctionTool")
@@ -75,6 +89,64 @@ class FishingGamePlugin(Star):
         # 计算当前已过今天的秒数
         elapsed = now.tm_hour * 3600 + now.tm_min * 60 + now.tm_sec
         return 86400 - elapsed
+    
+    async def _auction_check_loop(self):
+        """拍卖行过期检查 - 每小时执行一次"""
+        while True:
+            try:
+                await asyncio.sleep(3600)  # 每小时检查一次
+                logger.info("执行拍卖行过期检查")
+                try:
+                    expired = await self.storage.get_expired_listings()
+                    if expired:
+                        returned_count = 0
+                        for listing in expired:
+                            try:
+                                seller_id = listing["seller_id"]
+                                seller = await self.storage.get_user(seller_id)
+                                item_data = listing.get("item_data", {})
+                                item_type = item_data.get("type", "")
+                                
+                                if item_type == "rod":
+                                    seller.add_rod(
+                                        item_data["base_id"],
+                                        item_data["prefix_id"],
+                                        item_data.get("skills", {}),
+                                        item_data.get("enchant_count", 0),
+                                        item_data.get("instance_id")
+                                    )
+                                elif item_type == "bait":
+                                    seller.add_bait(item_data["base_id"], item_data["prefix_id"], item_data.get("count", 1))
+                                elif item_type == "fish":
+                                    seller.add_fish(item_data["fish_id"], item_data["prefix_id"], item_data.get("count", 1))
+                                elif item_type == "ticket":
+                                    seller.add_enchant_ticket(item_data["ticket_id"], item_data.get("count", 1))
+                                
+                                # 标记过期通知
+                                notices = seller.get("auction_notices", [])
+                                notices.append(f"你上架的 {item_data.get('name', '物品')} 已过期退回")
+                                seller.set("auction_notices", notices[-10:])  # 保留最近10条
+                                
+                                await self.storage.save_user(seller)
+                                returned_count += 1
+                            except Exception as e:
+                                logger.error(f"退还拍卖物品 {listing.get('id')} 失败: {e}")
+                        
+                        # 从全局移除过期记录
+                        await self.storage.remove_expired_listings([lst["id"] for lst in expired])
+                        logger.info(f"已退还 {returned_count} 件过期拍卖物品")
+                except Exception as e:
+                    logger.error(f"拍卖行过期检查失败: {e}")
+            except asyncio.CancelledError:
+                logger.info("拍卖行检查任务已取消")
+                break
+            except Exception as e:
+                logger.error(f"拍卖行检查任务异常: {e}")
+                await asyncio.sleep(300)
+    
+    def _schedule_auction_check(self):
+        """启动拍卖行过期检查异步任务"""
+        self._auction_check_task = asyncio.create_task(self._auction_check_loop())
     
     async def _daily_refresh_loop(self):
         """每日自动刷新所有用户数据 - 异步协程"""
@@ -120,6 +192,12 @@ class FishingGamePlugin(Star):
     @filter.command("我的钓竿", alias={"myrods"})
     async def cmd_myrods(self, event: AstrMessageEvent):
         '''我的钓竿 - 查看你拥有的所有钓竿'''
+        result = await self.commands.cmd_myrods(event)
+        yield event.plain_result(result)
+    
+    @filter.command("我的鱼竿")
+    async def cmd_myrods_yu(self, event: AstrMessageEvent):
+        '''我的鱼竿 - 查看你拥有的所有钓竿（同/我的钓竿）'''
         result = await self.commands.cmd_myrods(event)
         yield event.plain_result(result)
     
@@ -210,8 +288,35 @@ class FishingGamePlugin(Star):
     @filter.command("赠送", alias={"give"})
     async def cmd_give(self, event: AstrMessageEvent, target_user: str, item_type: str, item_id: str = "", quantity: int = 1):
         '''赠送 - 赠送物品给其他用户，用法: /赠送 @用户 物品类型 物品ID [数量]
-        物品类型: coins(金币), fish(渔获), bait(鱼饵)'''
+        物品类型: coins(金币), fish(渔获), bait(鱼饵), rod(钓竿)'''
         result = await self.commands.cmd_give(event, target_user, item_type, item_id, quantity)
+        yield event.plain_result(result)
+    
+    @filter.command("拍卖", alias={"auction"})
+    async def cmd_auction(self, event: AstrMessageEvent, action: str = "list", arg1: str = "", arg2: str = "", arg3: str = ""):
+        '''拍卖行 - 浏览/搜索/上架/出售/取消/购买拍卖物品，默认显示列表
+        用法: /拍卖 [操作] [参数1] [参数2] [参数3]
+        操作: 列表/搜索/上架/出售/取消/购买'''
+        result = await self.commands.cmd_auction(event, action, arg1, arg2, arg3)
+        yield event.plain_result(result)
+    
+    @filter.command("拍卖行")
+    async def cmd_auction_hang(self, event: AstrMessageEvent):
+        '''拍卖行 - 快速浏览拍卖行列表'''
+        result = await self.commands.cmd_auction(event, "list")
+        yield event.plain_result(result)
+    
+    @filter.command("附魔", alias={"enchant"})
+    async def cmd_enchant(self, event: AstrMessageEvent, rod_index: int = 0):
+        '''附魔 - 为指定编号的钓竿随机附魔技能，消耗金币或附魔券。不传编号则默认附魔当前装备钓竿。'''
+        result = await self.commands.cmd_enchant(event, rod_index)
+        yield event.plain_result(result)
+    
+    @filter.command("附魔升级", alias={"enchant_upgrade"})
+    async def cmd_enchant_upgrade(self, event: AstrMessageEvent, arg1: str = "", arg2: str = ""):
+        '''附魔升级 - 升级指定钓竿的指定技能，消耗金币。用法: /附魔升级 [技能名] [钓竿编号]
+        示例: /附魔升级 迅捷    /附魔升级 神慧 2'''
+        result = await self.commands.cmd_enchant_upgrade(event, arg1, arg2)
         yield event.plain_result(result)
     
     async def terminate(self):
@@ -220,6 +325,12 @@ class FishingGamePlugin(Star):
             self._refresh_task.cancel()
             try:
                 await self._refresh_task
+            except asyncio.CancelledError:
+                pass
+        if self._auction_check_task:
+            self._auction_check_task.cancel()
+            try:
+                await self._auction_check_task
             except asyncio.CancelledError:
                 pass
         logger.info("钓鱼游戏插件已卸载")

@@ -1,7 +1,15 @@
 """用户数据存储模块"""
 import time
 from typing import Optional, Dict, Any
-from .fish_data import LEVELS, ROD_BASES, ROD_PREFIXES, BAIT_BASES, BAIT_PREFIXES
+from .fish_data import (
+    LEVELS, ROD_BASES, ROD_PREFIXES, BAIT_BASES, BAIT_PREFIXES,
+    calc_rod_value, calc_bait_value, calc_fish_value,
+    get_rod_prefix, get_prefix_by_id, get_fish_by_id, get_bait_by_id,
+    ENCHANT_CONFIG, ENCHANT_TICKETS,
+)
+import random
+import uuid
+import asyncio
 
 class UserData:
     """玩家数据模型"""
@@ -9,19 +17,50 @@ class UserData:
         self.user_id = user_id
         if data:
             self._data = data
+            self._migrate_data()
         else:
             self._data = self._default_data()
     
+    def _migrate_data(self):
+        """兼容老版本数据迁移"""
+        # 钓竿数据补充 enchant_count、skills 和 instance_id
+        for rod in self._data.get("owned_rods", []):
+            if "enchant_count" not in rod:
+                rod["enchant_count"] = 0
+            if "skills" not in rod:
+                rod["skills"] = {}
+            if "instance_id" not in rod:
+                rod["instance_id"] = f"inst_{uuid.uuid4().hex[:16]}"
+        # 同步 current_rod 的 instance_id
+        current = self._data.get("current_rod", {})
+        if current:
+            if "enchant_count" not in current:
+                current["enchant_count"] = 0
+            if "skills" not in current:
+                current["skills"] = {}
+            if "instance_id" not in current:
+                # 从 owned_rods 中找匹配的 instance_id
+                for rod in self._data.get("owned_rods", []):
+                    if rod.get("base_id") == current.get("base_id") and rod.get("prefix_id") == current.get("prefix_id"):
+                        current["instance_id"] = rod["instance_id"]
+                        break
+                if "instance_id" not in current:
+                    current["instance_id"] = f"inst_{uuid.uuid4().hex[:16]}"
+        # 附魔券
+        if "enchant_tickets" not in self._data:
+            self._data["enchant_tickets"] = []
+    
     def _default_data(self) -> Dict:
         """默认玩家数据"""
+        initial_rod_id = f"inst_{uuid.uuid4().hex[:16]}"
         return {
             "user_id": self.user_id,
             "coins": 100,
             "exp": 0,
             "level": 1,
             # 初始钓竿: 普通的木制钓竿
-            "owned_rods": [{"base_id": "rod_001", "prefix_id": "rod_pref_03"}],
-            "current_rod": {"base_id": "rod_001", "prefix_id": "rod_pref_03"},
+            "owned_rods": [{"base_id": "rod_001", "prefix_id": "rod_pref_03", "instance_id": initial_rod_id, "enchant_count": 0, "skills": {}}],
+            "current_rod": {"base_id": "rod_001", "prefix_id": "rod_pref_03", "instance_id": initial_rod_id, "enchant_count": 0, "skills": {}},
             # 初始鱼饵: 普通的蚯蚓 x10
             "baits": [{"base_id": "bait_001", "prefix_id": "bait_pref_02", "count": 10}],
             # 当前使用的鱼饵（默认第一个）
@@ -40,6 +79,8 @@ class UserData:
             "updated_at": int(time.time()),
             # 图鉴
             "collection": {},
+            # 附魔券
+            "enchant_tickets": [],
             # 道具（刷新券等特殊物品）
             "items": [],
         }
@@ -168,27 +209,109 @@ class UserData:
         return list(self._data.get("fish_inventory", []))
     
     # 钓竿
-    def add_rod(self, base_id: str, prefix_id: str):
-        rod = {"base_id": base_id, "prefix_id": prefix_id}
-        if rod not in self._data.get("owned_rods", []):
-            self._data.setdefault("owned_rods", []).append(rod)
+    def add_rod(self, base_id: str, prefix_id: str, skills: dict = None, enchant_count: int = 0, instance_id: str = None) -> str:
+        """添加钓竿，返回 instance_id"""
+        if instance_id is None:
+            instance_id = f"inst_{uuid.uuid4().hex[:16]}"
+        rod = {
+            "base_id": base_id,
+            "prefix_id": prefix_id,
+            "instance_id": instance_id,
+            "enchant_count": enchant_count,
+            "skills": skills if skills else {},
+        }
+        self._data.setdefault("owned_rods", []).append(rod)
+        return instance_id
     
     def has_rod(self, base_id: str, prefix_id: str) -> bool:
-        return {"base_id": base_id, "prefix_id": prefix_id} in self._data.get("owned_rods", [])
+        """检查是否拥有某 base_id+prefix_id 组合的钓竿（用于商店购买等）"""
+        for rod in self._data.get("owned_rods", []):
+            if rod.get("base_id") == base_id and rod.get("prefix_id") == prefix_id:
+                return True
+        return False
+    
+    def has_rod_instance(self, instance_id: str) -> bool:
+        """检查是否拥有某 instance_id 的钓竿"""
+        for rod in self._data.get("owned_rods", []):
+            if rod.get("instance_id") == instance_id:
+                return True
+        return False
     
     @property
     def current_rod(self) -> Dict:
-        return self._data.get("current_rod", {"base_id": "rod_001", "prefix_id": "rod_pref_03"})
+        return self._data.get("current_rod", {"base_id": "rod_001", "prefix_id": "rod_pref_03", "instance_id": "", "enchant_count": 0, "skills": {}})
     
-    def equip_rod(self, base_id: str, prefix_id: str) -> bool:
-        if self.has_rod(base_id, prefix_id):
-            self._data["current_rod"] = {"base_id": base_id, "prefix_id": prefix_id}
-            return True
+    def equip_rod(self, instance_id: str) -> bool:
+        """通过 instance_id 装备钓竿"""
+        for rod in self._data.get("owned_rods", []):
+            if rod.get("instance_id") == instance_id:
+                self._data["current_rod"] = {
+                    "base_id": rod["base_id"],
+                    "prefix_id": rod["prefix_id"],
+                    "instance_id": rod["instance_id"],
+                    "enchant_count": rod.get("enchant_count", 0),
+                    "skills": dict(rod.get("skills", {})),
+                }
+                return True
         return False
     
     def get_owned_rods(self) -> list:
         """获取拥有的钓竿列表（副本）"""
         return list(self._data.get("owned_rods", []))
+    
+    def get_rod_by_index(self, index: int) -> Optional[dict]:
+        """通过编号(1-based)获取钓竿"""
+        rods = self._data.get("owned_rods", [])
+        if 1 <= index <= len(rods):
+            return dict(rods[index - 1])
+        return None
+    
+    def get_rod_by_instance_id(self, instance_id: str) -> Optional[dict]:
+        """通过 instance_id 获取钓竿"""
+        for rod in self._data.get("owned_rods", []):
+            if rod.get("instance_id") == instance_id:
+                return dict(rod)
+        return None
+    
+    def remove_rod(self, instance_id: str) -> Optional[dict]:
+        """通过 instance_id 移除钓竿，返回被移除的钓竿数据（用于赠送/拍卖转移）"""
+        for rod in self._data.get("owned_rods", []):
+            if rod.get("instance_id") == instance_id:
+                self._data["owned_rods"].remove(rod)
+                # 如果移除的是当前装备的钓竿，重置
+                current = self._data.get("current_rod", {})
+                if current.get("instance_id") == instance_id:
+                    self._reset_current_rod()
+                return dict(rod)
+        return None
+    
+    def _reset_current_rod(self):
+        """重置当前钓竿为第一个可用"""
+        rods = self._data.get("owned_rods", [])
+        if rods:
+            self._data["current_rod"] = {
+                "base_id": rods[0]["base_id"],
+                "prefix_id": rods[0]["prefix_id"],
+                "instance_id": rods[0]["instance_id"],
+                "enchant_count": rods[0].get("enchant_count", 0),
+                "skills": dict(rods[0].get("skills", {})),
+            }
+        else:
+            self._data["current_rod"] = {"base_id": "rod_001", "prefix_id": "rod_pref_03", "instance_id": f"inst_{uuid.uuid4().hex[:16]}", "enchant_count": 0, "skills": {}}
+    
+    def update_rod_skills(self, instance_id: str, enchant_count: int, skills: dict) -> bool:
+        """通过 instance_id 更新钓竿的技能和附魔次数"""
+        for rod in self._data.get("owned_rods", []):
+            if rod.get("instance_id") == instance_id:
+                rod["enchant_count"] = enchant_count
+                rod["skills"] = dict(skills)
+                # 同步更新当前装备
+                current = self._data.get("current_rod", {})
+                if current.get("instance_id") == instance_id:
+                    current["enchant_count"] = enchant_count
+                    current["skills"] = dict(skills)
+                return True
+        return False
     
     # 鱼饵选择
     @property
@@ -294,6 +417,77 @@ class UserData:
         """获取已收集的种类数量"""
         return len(self._data.get("collection", {}))
     
+    # 附魔券系统
+    def add_enchant_ticket(self, ticket_id: str, count: int = 1):
+        for ticket in self._data.get("enchant_tickets", []):
+            if ticket.get("ticket_id") == ticket_id:
+                ticket["count"] = ticket.get("count", 0) + count
+                return
+        self._data.setdefault("enchant_tickets", []).append({"ticket_id": ticket_id, "count": count})
+    
+    def remove_enchant_ticket(self, ticket_id: str, count: int = 1) -> bool:
+        for ticket in self._data.get("enchant_tickets", []):
+            if ticket.get("ticket_id") == ticket_id:
+                if ticket.get("count", 0) >= count:
+                    ticket["count"] -= count
+                    if ticket["count"] <= 0:
+                        self._data["enchant_tickets"].remove(ticket)
+                    return True
+        return False
+    
+    def get_enchant_ticket_count(self, ticket_id: str) -> int:
+        for ticket in self._data.get("enchant_tickets", []):
+            if ticket.get("ticket_id") == ticket_id:
+                return ticket.get("count", 0)
+        return 0
+    
+    def get_best_enchant_ticket(self) -> Optional[dict]:
+        """获取最佳附魔券（折扣最大的）"""
+        best = None
+        for ticket in self._data.get("enchant_tickets", []):
+            ticket_info = None
+            for t in ENCHANT_TICKETS:
+                if t["id"] == ticket.get("ticket_id"):
+                    ticket_info = t
+                    break
+            if ticket_info and ticket.get("count", 0) > 0:
+                if best is None or ticket_info["discount"] > best["discount"]:
+                    best = {"ticket_id": ticket["ticket_id"], "count": ticket["count"], "discount": ticket_info["discount"]}
+        return best
+    
+    # 库存价值计算
+    def get_total_inventory_value(self) -> int:
+        """计算库存总价值（钓竿 + 鱼饵 + 渔获 + 道具）"""
+        total = 0
+        # 钓竿价值
+        for rod in self._data.get("owned_rods", []):
+            total += calc_rod_value(
+                rod.get("base_id", ""),
+                rod.get("prefix_id", ""),
+                rod.get("skills")
+            )
+        # 鱼饵价值
+        for bait in self._data.get("baits", []):
+            total += calc_bait_value(
+                bait.get("base_id", ""),
+                bait.get("prefix_id", ""),
+                bait.get("count", 0)
+            )
+        # 渔获价值
+        for fish in self._data.get("fish_inventory", []):
+            total += calc_fish_value(
+                fish.get("fish_id", ""),
+                fish.get("prefix_id", ""),
+                fish.get("count", 0)
+            )
+        # 道具价值（刷新券按商店价，附魔券按固定值）
+        for item in self._data.get("items", []):
+            if item.get("id") == "refresh_token":
+                total += 30 * item.get("count", 0)
+        for ticket in self._data.get("enchant_tickets", []):
+            total += 50 * ticket.get("count", 0)
+        return total
+    
     # 道具系统（刷新券等特殊物品）
     def add_item(self, item_id: str, count: int = 1):
         """添加道具"""
@@ -326,6 +520,7 @@ class StorageManager:
     """存储管理器"""
     def __init__(self, star):
         self.star = star
+        self._auction_lock = asyncio.Lock()
 
     async def get_kv_data(self, key, default=None):
         return await self.star.get_kv_data(key, default)
@@ -377,9 +572,105 @@ class StorageManager:
         await self.put_kv_data(key, leaderboard)
     
     async def get_leaderboard(self) -> list:
-        """获取排行榜"""
-        key = "fishing_leaderboard"
-        leaderboard = await self.get_kv_data(key) or {}
-        # 按钓鱼次数排序，返回前10
-        sorted_users = sorted(leaderboard.items(), key=lambda x: x[1].get("count", 0) if isinstance(x[1], dict) else x[1], reverse=True)[:10]
-        return [(uid, data.get("count", 0) if isinstance(data, dict) else data, data.get("name", "未知") if isinstance(data, dict) else "未知", data.get("level", 1) if isinstance(data, dict) else 1) for uid, data in sorted_users]
+        """获取排行榜（实时计算 inventory_value + exp），返回全部用于准确排名"""
+        all_ids = await self.get_all_user_ids()
+        # 从旧排行榜缓存中尝试获取用户名（兼容已有数据）
+        old_lb = await self.get_kv_data("fishing_leaderboard") or {}
+        scores = []
+        for uid in all_ids:
+            try:
+                user = await self.get_user(uid)
+                score = user.get_total_inventory_value() + user.exp
+                name = ""
+                if isinstance(old_lb.get(uid), dict):
+                    name = old_lb[uid].get("name", "")
+                scores.append((uid, score, name))
+            except Exception:
+                continue
+        scores.sort(key=lambda x: x[1], reverse=True)
+        return scores
+    
+    # ===== 拍卖行 =====
+    async def list_auction_item(self, seller_id: str, seller_name: str, item: dict) -> dict:
+        """物品上架，返回 listing 信息"""
+        async with self._auction_lock:
+            listings = await self.get_kv_data("fishing_auctions") or []
+            listing_id = f"auc_{int(time.time() * 1000)}_{len(listings)}"
+            expires_at = int(time.time()) + getattr(self.star, 'auction_duration_hours', 24) * 3600
+            listing = {
+                "id": listing_id,
+                "seller_id": seller_id,
+                "seller_name": seller_name,
+                "type": item["type"],  # rod, bait, fish, ticket
+                "base_id": item.get("base_id", ""),
+                "prefix_id": item.get("prefix_id", ""),
+                "item_data": item,  # 完整物品数据
+                "price": item["price"],
+                "expires_at": expires_at,
+                "created_at": int(time.time()),
+            }
+            listings.append(listing)
+            await self.put_kv_data("fishing_auctions", listings)
+            return listing
+    
+    async def cancel_auction_listing(self, listing_id: str, seller_id: str) -> Optional[dict]:
+        """取消上架，返回 listing 数据（用于退还物品）"""
+        async with self._auction_lock:
+            listings = await self.get_kv_data("fishing_auctions") or []
+            for i, lst in enumerate(listings):
+                if lst["id"] == listing_id and lst["seller_id"] == seller_id:
+                    listing = listings.pop(i)
+                    await self.put_kv_data("fishing_auctions", listings)
+                    return listing
+            return None
+    
+    async def buy_auction_item(self, listing_id: str, buyer_id: str) -> Optional[dict]:
+        """购买拍卖物品，返回 listing 数据（用于转移物品）"""
+        async with self._auction_lock:
+            listings = await self.get_kv_data("fishing_auctions") or []
+            for i, lst in enumerate(listings):
+                if lst["id"] == listing_id:
+                    if lst["seller_id"] == buyer_id:
+                        return None  # 不能买自己的
+                    listing = listings.pop(i)
+                    await self.put_kv_data("fishing_auctions", listings)
+                    return listing
+            return None
+    
+    async def search_auctions(self, keyword: str = "", page: int = 1, page_size: int = 10) -> tuple:
+        """搜索拍卖行，返回 (listings, total)"""
+        listings = await self.get_kv_data("fishing_auctions") or []
+        now = int(time.time())
+        # 过滤过期
+        listings = [lst for lst in listings if lst["expires_at"] > now]
+        # 搜索
+        if keyword:
+            kw = keyword.lower()
+            filtered = []
+            for lst in listings:
+                item = lst.get("item_data", {})
+                name = item.get("name", "").lower()
+                type_name = lst["type"].lower()
+                if kw in name or kw in type_name:
+                    filtered.append(lst)
+            listings = filtered
+        # 分页
+        total = len(listings)
+        start = (page - 1) * page_size
+        end = start + page_size
+        return listings[start:end], total
+    
+    async def get_expired_listings(self) -> list:
+        """获取所有已过期的上架物品"""
+        listings = await self.get_kv_data("fishing_auctions") or []
+        now = int(time.time())
+        expired = [lst for lst in listings if lst["expires_at"] <= now]
+        return expired
+    
+    async def remove_expired_listings(self, listing_ids: list) -> bool:
+        """移除指定过期的上架记录"""
+        async with self._auction_lock:
+            listings = await self.get_kv_data("fishing_auctions") or []
+            new_listings = [lst for lst in listings if lst["id"] not in listing_ids]
+            await self.put_kv_data("fishing_auctions", new_listings)
+            return True

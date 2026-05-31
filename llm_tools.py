@@ -78,10 +78,10 @@ class FishingBagTool(FunctionTool[AstrAgentContext]):
     """查看玩家背包"""
     name: str = "fishing_bag"
     description: str = (
-        "查看玩家的背包信息，包括金币、经验、等级、渔获（每条鱼旁有ID如 fish_003）、"
-        "鱼饵（每个鱼饵旁有ID如 bait_001）、当前钓竿等。"
-        "通过背包可以获取需要赠送或出售的鱼的ID。"
-        "当用户要看背包、有什么鱼、财产时调用。"
+        "查看玩家的完整背包信息，包括：所有拥有的钓竿（带编号1/2/3，附魔状态）、"
+        "渔获（每条鱼旁有ID如 fish_003）、鱼饵（每个鱼饵旁有ID如 bait_001）、金币、等级等。"
+        "当用户要看背包、有什么物品、想出售/赠送物品时，必须先调用此工具获取物品编号和ID。"
+        "钓竿通过编号（如1/2/3）引用，渔获和鱼饵通过ID引用。"
     )
     parameters: dict = Field(default_factory=lambda: {
         "type": "object",
@@ -202,9 +202,10 @@ class FishingGiveTool(FunctionTool[AstrAgentContext]):
     """赠送物品给其他用户"""
     name: str = "fishing_give"
     description: str = (
-        "赠送金币、渔获或鱼饵给其他用户。每日限10次。"
-        "注意：如果item_type是fish或bait，item_id必须填写，否则会报错。"
+        "赠送金币、渔获、鱼饵或钓竿给其他用户。每日限10次。"
+        "注意：如果item_type是fish、bait或rod，item_id必须填写，否则会报错。"
         "先通过fishing_bag查看物品的ID（如fish_003代表鲤鱼，bait_001代表蚯蚓），"
+        "钓竿通过fishing_myrods查看编号。"
         "然后将该ID传入item_id参数。"
     )
     parameters: dict = Field(default_factory=lambda: {
@@ -216,11 +217,11 @@ class FishingGiveTool(FunctionTool[AstrAgentContext]):
             },
             "item_type": {
                 "type": "string",
-                "description": "物品类型，可选值: coins(金币), fish(渔获), bait(鱼饵)"
+                "description": "物品类型，可选值: coins(金币), fish(渔获), bait(鱼饵), rod(钓竿)"
             },
             "item_id": {
                 "type": "string",
-                "description": "物品ID（赠送金币时不需要），渔获ID如fish_003，鱼饵ID如bait_001"
+                "description": "物品ID（赠送金币时不需要），渔获ID如fish_003，鱼饵ID如bait_001，钓竿填写编号如1"
             },
             "quantity": {
                 "type": "number",
@@ -390,3 +391,122 @@ class FishingCollectionTool(FunctionTool[AstrAgentContext]):
     async def call(self, context: ContextWrapper[AstrAgentContext], **kwargs):
         event = context.context.event
         return await self.plugin.commands.cmd_collection(event)
+
+
+@dataclass
+class FishingAuctionTool(FunctionTool[AstrAgentContext]):
+    """拍卖行操作"""
+    name: str = "fishing_auction"
+    description: str = (
+        "拍卖行操作工具。重要区分：'直接出售'(sell)是立刻把物品卖给系统换金币，价格固定为物品价值的30%，即时到账；"
+        "'上架'(listing)是把物品挂到拍卖行等其他玩家购买，可以自定价格（默认价值的30%，可上下浮动30%），但需要等待别人买。"
+        "当用户说'卖掉'、'直接出售'、'换成金币'时用action=sell；"
+        "当用户说'上架'、'挂到拍卖行'、'放出去卖'时用action=listing。"
+        "action=list浏览列表，action=search搜索关键词，action=buy购买，action=cancel取消自己的上架。"
+        "【重要】出售/上架钓竿后，背包中的钓竿编号会重新排序。如果要连续操作多根钓竿，"
+        "每次操作后请根据返回结果中的最新编号继续，或先调用fishing_bag重新查询。"
+    )
+    parameters: dict = Field(default_factory=lambda: {
+        "type": "object",
+        "properties": {
+            "action": {
+                "type": "string",
+                "description": "操作类型: list(列表), search(搜索), listing(上架), sell(出售), buy(购买), cancel(取消)"
+            },
+            "keyword_or_id": {
+                "type": "string",
+                "description": "搜索关键词、上架/购买/取消的编号。action=list时可不传"
+            },
+            "item_type": {
+                "type": "string",
+                "description": "物品类型: rod(钓竿), bait(鱼饵), fish(渔获), ticket(附魔券)。上架/出售时需要"
+            },
+            "price": {
+                "type": "number",
+                "description": "上架价格（可选，不传则使用默认价格）"
+            }
+        },
+        "required": ["action"]
+    })
+    plugin: Any = None
+
+    async def call(self, context: ContextWrapper[AstrAgentContext], **kwargs):
+        event = context.context.event
+        action = kwargs.get("action", "list")
+        keyword_or_id = kwargs.get("keyword_or_id", "")
+        item_type = kwargs.get("item_type", "")
+        price = kwargs.get("price")
+        
+        args = []
+        if action == "search":
+            args.append(keyword_or_id)
+        elif action in ("listing", "sell"):
+            if item_type:
+                args.append(item_type)
+            if keyword_or_id:
+                args.append(keyword_or_id)
+            if price is not None:
+                args.append(str(price))
+        elif action in ("buy", "cancel"):
+            if keyword_or_id:
+                args.append(keyword_or_id)
+        
+        return await self.plugin.commands.cmd_auction(event, action, *args)
+
+
+@dataclass
+class FishingEnchantTool(FunctionTool[AstrAgentContext]):
+    """钓竿附魔"""
+    name: str = "fishing_enchant"
+    description: str = (
+        "为指定编号的钓竿随机附魔技能，消耗金币或附魔券。"
+        "当用户说附魔、给钓竿加技能时调用。"
+        "rod_index 可以通过 fishing_myrods 查看。"
+    )
+    parameters: dict = Field(default_factory=lambda: {
+        "type": "object",
+        "properties": {
+            "rod_index": {
+                "type": "number",
+                "description": "钓竿编号（从1开始）"
+            }
+        },
+        "required": ["rod_index"]
+    })
+    plugin: Any = None
+
+    async def call(self, context: ContextWrapper[AstrAgentContext], **kwargs):
+        event = context.context.event
+        rod_index = int(kwargs.get("rod_index", 1))
+        return await self.plugin.commands.cmd_enchant(event, rod_index)
+
+
+@dataclass
+class FishingEnchantUpgradeTool(FunctionTool[AstrAgentContext]):
+    """钓竿附魔升级"""
+    name: str = "fishing_enchant_upgrade"
+    description: str = (
+        "升级指定钓竿的指定技能，消耗金币。"
+        "当用户说升级技能、提升技能等级时调用。"
+    )
+    parameters: dict = Field(default_factory=lambda: {
+        "type": "object",
+        "properties": {
+            "rod_index": {
+                "type": "number",
+                "description": "钓竿编号（从1开始）"
+            },
+            "skill": {
+                "type": "string",
+                "description": "技能名: swift(迅捷), lucky(幸运), harvest(丰收), treasure(寻宝), tide(潮汐), exp_boost(神慧)"
+            }
+        },
+        "required": ["rod_index", "skill"]
+    })
+    plugin: Any = None
+
+    async def call(self, context: ContextWrapper[AstrAgentContext], **kwargs):
+        event = context.context.event
+        rod_index = int(kwargs.get("rod_index", 1))
+        skill = kwargs.get("skill", "")
+        return await self.plugin.commands.cmd_enchant_upgrade(event, rod_index, skill)

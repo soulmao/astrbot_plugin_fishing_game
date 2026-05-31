@@ -3,7 +3,10 @@ from .fish_data import (
     FISH_TYPES, FISH_PREFIXES, ROD_BASES, ROD_PREFIXES,
     BAIT_BASES, BAIT_PREFIXES, LEVELS, SHOP_ITEMS,
     get_fish_by_id, get_prefix_by_id, get_rod_by_id, get_bait_by_id,
-    get_level_info, get_next_level_exp, ROD_SKILL_DESCRIPTIONS
+    get_level_info, get_next_level_exp, ROD_SKILL_DESCRIPTIONS,
+    ENCHANT_TICKETS, ENCHANT_CONFIG,
+    calc_rod_value, calc_bait_value, calc_fish_value,
+    get_rod_prefix, get_bait_prefix,
 )
 from .storage import StorageManager, UserData
 import random
@@ -64,20 +67,36 @@ class FishingGameCommands:
                 return p
         return BAIT_PREFIXES[1]  # 默认"普通的"
 
-    def _format_rod_skills(self, prefix_id: str) -> str:
-        """格式化钓竿技能文本"""
+    def _format_rod_skills(self, prefix_id: str, rod_skills: dict = None) -> str:
+        """格式化钓竿技能文本。前缀默认技能与附魔技能叠加显示，附魔覆盖同名技能"""
         prefix = self._get_rod_prefix(prefix_id)
-        skills = prefix.get("skills", {})
-        if not skills:
+        default_skills = prefix.get("skills", {})
+        # 合并：前缀默认 + 附魔覆盖
+        effective_skills = dict(default_skills)
+        if rod_skills:
+            effective_skills.update(rod_skills)
+        if not effective_skills:
             return ""
         parts = []
-        for sid, val in skills.items():
+        for sid, val in effective_skills.items():
             label = ROD_SKILL_DESCRIPTIONS.get(sid, sid)
             if sid in ("lucky", "exp_boost"):
                 parts.append(f"{label}+{int(val*100)}%")
             else:
                 parts.append(f"{label}{int(val*100)}%")
         return " [" + " | ".join(parts) + "]"
+    
+    def _get_latest_rods_summary(self, user) -> str:
+        """返回最新的钓竿列表摘要（用于操作后提示LLM编号已变化）"""
+        current = user.current_rod
+        lines = ["\n📋 当前拥有的钓竿:"]
+        for i, rod in enumerate(user.get_owned_rods(), 1):
+            name = self._format_rod_name(rod)
+            marker = " [当前]" if rod.get("instance_id") == current.get("instance_id") else ""
+            lines.append(f"  {i}. {name}{marker}")
+        if not user.get_owned_rods():
+            lines.append("  (无)")
+        return "\n".join(lines)
     
     def _extract_target_user_id(self, raw: str) -> Optional[str]:
         """从命令参数中提取目标用户ID"""
@@ -87,6 +106,76 @@ class FishingGameCommands:
         if not cleaned:
             return None
         return cleaned
+    
+    def _weighted_random_choice(self, items: list, key: str = "weight") -> dict:
+        """按权重随机选择一项"""
+        weights = [item.get(key, 0) for item in items]
+        total = sum(weights)
+        if total <= 0:
+            return random.choice(items)
+        r = random.uniform(0, total)
+        cumulative = 0
+        for item in items:
+            cumulative += item.get(key, 0)
+            if r <= cumulative:
+                return item
+        return items[-1]
+    
+    def _format_rod_name(self, rod: dict, with_value: bool = False) -> str:
+        """格式化钓竿名称"""
+        base = get_rod_by_id(rod["base_id"])
+        prefix = get_rod_prefix(rod["prefix_id"])
+        name = "木制钓竿"
+        if base and prefix:
+            name = f"{prefix['name']}{base['name']}"
+        if with_value:
+            value = calc_rod_value(
+                rod.get("base_id", ""), rod.get("prefix_id", ""), rod.get("skills")
+            )
+            return f"{name}(价值{value}金币)"
+        return name
+    
+    def _calc_enchant_price(self, rod: dict) -> int:
+        """计算附魔价格 = 鱼竿价值 × 30% × 2^enchant_count（倍增）"""
+        value = calc_rod_value(
+            rod.get("base_id", ""), rod.get("prefix_id", ""), rod.get("skills")
+        )
+        enchant_count = rod.get("enchant_count", 0)
+        base = int(value * ENCHANT_CONFIG["base_price_percent"])
+        price = int(base * (2 ** enchant_count))
+        return max(1, price)
+    
+    def _calc_upgrade_price(self, rod: dict) -> int:
+        """计算升级价格 = 鱼竿价值 × 30% × 2^enchant_count（与附魔同价）"""
+        return self._calc_enchant_price(rod)
+    
+    def _get_available_skills(self) -> list:
+        """获取所有可附魔的技能ID列表"""
+        return ["swift", "lucky", "harvest", "treasure", "tide", "exp_boost"]
+    
+    def _get_item_name_for_auction(self, item_data: dict) -> str:
+        """获取拍卖物品显示名称"""
+        item_type = item_data.get("type", "")
+        if item_type == "rod":
+            return self._format_rod_name(item_data)
+        elif item_type == "bait":
+            base = get_bait_by_id(item_data.get("base_id", ""))
+            prefix = get_bait_prefix(item_data.get("prefix_id", ""))
+            if base and prefix:
+                return f"{prefix['name']}{base['name']}"
+            return "未知鱼饵"
+        elif item_type == "fish":
+            fish = get_fish_by_id(item_data.get("fish_id", ""))
+            prefix = get_prefix_by_id(item_data.get("prefix_id", ""))
+            if fish and prefix:
+                return f"{prefix['name']}{fish['name']}"
+            return "未知鱼类"
+        elif item_type == "ticket":
+            for t in ENCHANT_TICKETS:
+                if t["id"] == item_data.get("ticket_id", ""):
+                    return t["name"]
+            return "未知附魔券"
+        return "未知物品"
     
     async def cmd_help(self, event) -> str:
         """帮助命令"""
@@ -134,11 +223,23 @@ class FishingGameCommands:
   切换当前使用的鱼饵，钓鱼时优先消耗该鱼饵
 
 🏆 `/排行榜` 或 `/rank`
-  查看钓鱼次数排行榜
+  查看综合价值排行榜（库存价值 + 经验）
 
 🎁 `/赠送 @用户 类型 ID [数量]` 或 `/give @用户 类型 ID [数量]`
-  赠送金币/渔获/鱼饵给其他用户
-  类型: coins(金币), fish(渔获), bait(鱼饵)
+  赠送金币/渔获/鱼饵/钓竿给其他用户
+  类型: coins(金币), fish(渔获), bait(鱼饵), rod(钓竿)
+
+🏪 `/拍卖` 或 `/auction`
+  拍卖行：浏览/搜索/上架/出售/取消/购买物品
+  /拍卖 列表 [页码] | /拍卖 搜索 <关键词>
+  /拍卖 上架 <类型> <编号> [价格] | /拍卖 出售 <类型> <编号>
+  /拍卖 取消 <编号> | /拍卖 购买 <编号>
+
+✨ `/附魔 <钓竿编号>` 或 `/enchant <钓竿编号>`
+  为钓竿随机附魔技能，消耗金币或附魔券
+
+⬆️ `/附魔升级 <钓竿编号> <技能名>` 或 `/enchant_upgrade <编号> <技能>`
+  升级指定钓竿的指定技能，消耗金币
 
 ————————————————
 
@@ -148,7 +249,9 @@ class FishingGameCommands:
 • 更好的钓竿/鱼饵 = 更高稀有度 + 更多经验
 • 升级解锁更强力的钓竿和鱼饵
 • 高品质钓竿前缀自带词条技能（迅捷、幸运、丰收等）
+• 钓竿可附魔和升级技能，每次附魔价格倍增
 • 每日可赠送 10 次给好友
+• 拍卖行可买卖物品，保留24小时
 
 🔱 **钓竿词条技能：**
 高品质钓竿前缀自带技能：
@@ -177,10 +280,18 @@ class FishingGameCommands:
             
             for i, rod in enumerate(user.get_owned_rods(), 1):
                 rod_name = self._format_rod_name(rod)
-                skill_text = self._format_rod_skills(rod["prefix_id"])
-                is_current = (rod["base_id"] == current["base_id"] and rod["prefix_id"] == current["prefix_id"])
+                skill_text = self._format_rod_skills(rod["prefix_id"], rod.get("skills"))
+                enchant_text = f" [附魔{rod.get('enchant_count', 0)}次]" if rod.get('enchant_count', 0) > 0 else ""
+                # 显示附魔/升级费用
+                prefix_info = get_rod_prefix(rod["prefix_id"])
+                max_slots = prefix_info.get("max_slots", 0)
+                cost_hint = ""
+                if max_slots > 0:
+                    price = self._calc_enchant_price(rod)
+                    cost_hint = f" [+附魔/升级](需{price}金币)"
+                is_current = (rod.get("instance_id") == current.get("instance_id"))
                 marker = " [当前]" if is_current else ""
-                result += f"{i}. {rod_name}{skill_text}{marker}\n"
+                result += f"{i}. {rod_name}{skill_text}{enchant_text}{cost_hint}{marker}\n"
             
             if not user.get_owned_rods():
                 result += "(无)\n"
@@ -199,7 +310,7 @@ class FishingGameCommands:
                 return f"编号无效，你有 {len(rods)} 根钓竿"
             
             rod = rods[index - 1]
-            if user.equip_rod(rod["base_id"], rod["prefix_id"]):
+            if user.equip_rod(rod["instance_id"]):
                 await self.storage.save_user(user)
                 rod_name = self._format_rod_name(rod)
                 return f"✅ 已装备: {rod_name}"
@@ -366,7 +477,8 @@ class FishingGameCommands:
             
             rod = user.current_rod
             rod_prefix = self._get_rod_prefix(rod["prefix_id"])
-            skills = rod_prefix.get("skills", {})
+            # 优先使用钓竿自身的 skills（附魔后），否则使用前缀默认 skills
+            skills = rod.get("skills", {}) or rod_prefix.get("skills", {})
             
             # 解析钓竿技能数值
             swift_val = skills.get("swift", 0)
@@ -458,6 +570,13 @@ class FishingGameCommands:
                 user.add_coins(treasure_gold)
                 bonus_msgs.append(f"💎 寻宝发现：获得 {treasure_gold} 金币！")
             
+            # 附魔券掉落判定（1% 基础掉落率）
+            ticket_dropped = None
+            if random.random() < 0.01:
+                ticket = self._weighted_random_choice(ENCHANT_TICKETS)
+                user.add_enchant_ticket(ticket["id"], 1)
+                ticket_dropped = ticket["name"]
+            
             # 保存
             await self.storage.save_user(user)
             
@@ -514,6 +633,9 @@ class FishingGameCommands:
                 if r.get("desc"):
                     result += f"\n📖 {r['desc']}"
             
+            if ticket_dropped:
+                result += f"\n\n🎫 额外获得: {ticket_dropped} x1！"
+            
             if bonus_msgs:
                 result += "\n\n" + "\n".join(bonus_msgs)
             
@@ -541,10 +663,21 @@ class FishingGameCommands:
 📈 经验: {user.exp}{'' if next_exp is None else f' / {next_exp}'}
 🐟 累计钓鱼: {user.total_fish_count} 次
 
-🎣 当前钓竿: {self._format_rod_name(user.current_rod)}{self._format_rod_skills(user.current_rod["prefix_id"])}
-
-🪤 鱼饵:"""
+🎣 拥有的钓竿:"""
             
+            current = user.current_rod
+            for i, rod in enumerate(user.get_owned_rods(), 1):
+                rod_name = self._format_rod_name(rod)
+                skill_text = self._format_rod_skills(rod["prefix_id"], rod.get("skills"))
+                enchant_text = f" [附魔{rod.get('enchant_count', 0)}次]" if rod.get('enchant_count', 0) > 0 else ""
+                is_current = (rod.get("instance_id") == current.get("instance_id"))
+                marker = " [当前装备]" if is_current else ""
+                result += f"\n  {i}. {rod_name}{skill_text}{enchant_text}{marker}"
+            
+            if not user.get_owned_rods():
+                result += "\n  (无)"
+            
+            result += "\n\n🪤 鱼饵:"
             for bait in user.get_baits():
                 bait_base = get_bait_by_id(bait["base_id"])
                 bait_prefix = self._get_bait_prefix(bait["prefix_id"])
@@ -970,7 +1103,7 @@ class FishingGameCommands:
             return f"✅ 商店已刷新{refresh_msg}！\n\n" + result
     
     async def cmd_rank(self, event) -> str:
-        """排行榜命令"""
+        """排行榜命令（库存价值 + 经验综合排行）"""
         user_id = event.get_sender_id()
         user = await self.storage.get_user(user_id)
         
@@ -979,21 +1112,25 @@ class FishingGameCommands:
         if not leaderboard:
             return "🏆 排行榜\n\n暂无数据"
         
-        result = "🏆 钓鱼排行榜\n\n"
-        for i, data in enumerate(leaderboard, 1):
-            if len(data) == 4:
-                uid, count, name, level = data
-            else:
-                uid, count = data
-                name, level = "未知", 1
+        result = "🏆 富豪排行榜（库存价值 + 经验）\n\n"
+        for i, data in enumerate(leaderboard[:10], 1):
+            uid, score, name = data
+            display = f"{name}({uid})" if name else uid
             emoji = {1: "🥇", 2: "🥈", 3: "🥉"}.get(i, f"{i}.")
-            result += f"{emoji} {name} Lv.{level}  {count} 次钓鱼\n"
+            result += f"{emoji} {display}  综合价值: {score}\n"
         
-        # 查找当前用户排名（基于排行榜数据，仅参考）
-        user_count = user.total_fish_count
-        rank = sum(1 for _, count, _, _ in leaderboard if count > user_count) + 1 if leaderboard else 1
+        # 查找当前用户排名（遍历全部确保准确）
+        my_score = user.get_total_inventory_value() + user.exp
+        my_rank = 1
+        for uid, score, _ in leaderboard:
+            if uid == user_id:
+                break
+            my_rank += 1
+        else:
+            my_rank = len(leaderboard) + 1
         
-        result += f"\n📍 你的排名: 第{rank}名 ({user_count}次)"
+        my_name = event.get_sender_name() or user_id[:10]
+        result += f"\n📍 你的排名: 第{my_rank}名 ({my_name} 综合价值: {my_score})"
         
         return result
     
@@ -1047,9 +1184,9 @@ class FishingGameCommands:
                     else:
                         exp_gained = int(quantity * 5 * 0.05)
                 
-                # 验证：赠送渔获/鱼饵时必须提供ID
-                if item_type in ("fish", "bait") and not item_id:
-                    return "请指定要赠送的物品ID，先使用 /背包 查看你拥有的物品ID，如 /赠送 @用户 fish fish_003 2"
+                # 验证：赠送渔获/鱼饵/钓竿时必须提供ID
+                if item_type in ("fish", "bait", "rod") and not item_id:
+                    return "请指定要赠送的物品ID或编号，先使用 /背包 或 /我的钓竿 查看，如 /赠送 @用户 fish fish_003 2"
                 
                 # 处理金币赠送
                 if item_type == "coins":
@@ -1151,4 +1288,624 @@ class FishingGameCommands:
                     
                     return f"✅ 已赠送鱼饵 x{quantity} 给 {target_user}（+{exp_gained} 经验）"
                 
+                # 处理钓竿赠送
+                if item_type == "rod":
+                    try:
+                        rod_index = int(item_id)
+                    except ValueError:
+                        return "钓竿编号必须是数字，请使用 /我的钓竿 查看编号"
+                    
+                    rods = sender.get_owned_rods()
+                    if rod_index < 1 or rod_index > len(rods):
+                        return f"钓竿编号无效，你有 {len(rods)} 根钓竿。提示：出售/上架后编号会重新排序，请先重新查询背包或我的钓竿获取最新编号。"
+                    
+                    rod = rods[rod_index - 1]
+                    
+                    # 不能赠送当前装备的钓竿
+                    current = sender.current_rod
+                    if rod.get("instance_id") == current.get("instance_id"):
+                        return "不能赠送当前装备的钓竿，请先切换到其他钓竿"
+                    
+                    if not sender.remove_rod(rod["instance_id"]):
+                        return "钓竿移除失败"
+                    sender.add_give()
+                    
+                    try:
+                        await self.storage.save_user(sender)
+                    except Exception as e:
+                        sender.add_rod(rod["base_id"], rod["prefix_id"], rod.get("skills"), rod.get("enchant_count", 0), rod["instance_id"])
+                        return f"赠送失败：无法保存你的数据（{e}）"
+                    
+                    try:
+                        receiver.add_rod(rod["base_id"], rod["prefix_id"], rod.get("skills"), rod.get("enchant_count", 0), rod["instance_id"])
+                        receiver.add_exp(exp_gained)
+                        await self.storage.save_user(receiver)
+                    except Exception as e:
+                        try:
+                            sender.add_rod(rod["base_id"], rod["prefix_id"], rod.get("skills"), rod.get("enchant_count", 0), rod["instance_id"])
+                            sender._data["daily_give_count"] = max(0, sender._data.get("daily_give_count", 1) - 1)
+                            await self.storage.save_user(sender)
+                        except Exception:
+                            pass
+                        return f"赠送失败：目标用户数据保存异常（{e}），已尝试回滚"
+                    
+                    rod_name = self._format_rod_name(rod)
+                    return f"✅ 已赠送钓竿 [{rod_name}] 给 {target_user}（+{exp_gained} 经验）"
+                
                 return "无效的物品类型"
+    
+    async def cmd_auction(self, event, action: str = "list", arg1: str = "", arg2: str = "", arg3: str = "") -> str:
+        """拍卖行命令"""
+        user_id = event.get_sender_id()
+        action = action.lower()
+        args = [a for a in [arg1, arg2, arg3] if a]
+        
+        if action in ("列表", "list"):
+            page = 1
+            if args:
+                try:
+                    page = int(args[0])
+                except ValueError:
+                    pass
+            listings, total = await self.storage.search_auctions("", page, 10)
+            total_pages = (total + 9) // 10
+            
+            result = f"🏪 拍卖行 (第{page}/{max(1, total_pages)}页, 共{total}件)\n\n"
+            if not listings:
+                result += "暂无在售物品\n"
+            else:
+                for lst in listings:
+                    name = self._get_item_name_for_auction(lst.get("item_data", {}))
+                    result += f"📦 [{lst['id']}] {name}\n"
+                    result += f"   售价: {lst['price']} 金币 | 卖家: {lst.get('seller_name', '未知')[:10]}\n"
+                    remaining = max(0, lst['expires_at'] - int(time.time()))
+                    hours = remaining // 3600
+                    mins = (remaining % 3600) // 60
+                    result += f"   剩余: {hours}小时{mins}分\n\n"
+            result += "\n💡 /拍卖 购买 [编号] | /拍卖 搜索 [关键词]"
+            return result
+        
+        if action in ("搜索", "search"):
+            if not args:
+                return "请输入搜索关键词，如: /拍卖 搜索 金色"
+            keyword = args[0]
+            page = 1
+            if len(args) > 1:
+                try:
+                    page = int(args[1])
+                except ValueError:
+                    pass
+            listings, total = await self.storage.search_auctions(keyword, page, 10)
+            total_pages = (total + 9) // 10
+            
+            result = f"🔍 拍卖行搜索 '{keyword}' (第{page}/{max(1, total_pages)}页, 共{total}件)\n\n"
+            if not listings:
+                result += "未找到匹配物品\n"
+            else:
+                for lst in listings:
+                    name = self._get_item_name_for_auction(lst.get("item_data", {}))
+                    result += f"📦 [{lst['id']}] {name}\n"
+                    result += f"   售价: {lst['price']} 金币 | 卖家: {lst.get('seller_name', '未知')[:10]}\n\n"
+            return result
+        
+        if action in ("出售", "sell"):
+            if len(args) < 2:
+                return "用法: /拍卖 出售 <类型> <编号>\n类型: rod(钓竿), bait(鱼饵), fish(渔获), ticket(附魔券)"
+            item_type = args[0].lower()
+            item_ref = args[1]
+            
+            async with self._get_user_lock(user_id):
+                user = await self.storage.get_user(user_id)
+                
+                if item_type == "rod":
+                    try:
+                        rod_index = int(item_ref)
+                    except ValueError:
+                        return "钓竿编号必须是数字"
+                    rods = user.get_owned_rods()
+                    if rod_index < 1 or rod_index > len(rods):
+                        return f"钓竿编号无效。提示：出售/上架后编号会重新排序，请先重新查询背包或我的钓竿获取最新编号。"
+                    rod = rods[rod_index - 1]
+                    current = user.current_rod
+                    if rod.get("instance_id") == current.get("instance_id"):
+                        return "不能出售当前装备的钓竿"
+                    value = calc_rod_value(rod["base_id"], rod["prefix_id"], rod.get("skills"))
+                    sell_price = int(value * self.star.auction_default_price_percent)
+                    if not user.remove_rod(rod["instance_id"]):
+                        return "出售失败"
+                    user.add_coins(sell_price)
+                    await self.storage.save_user(user)
+                    return f"✅ 已直接出售 {self._format_rod_name(rod)}，获得 {sell_price} 金币" + self._get_latest_rods_summary(user)
+                
+                elif item_type == "bait":
+                    baits = user.get_baits()
+                    try:
+                        bait_index = int(item_ref)
+                        if bait_index < 1 or bait_index > len(baits):
+                            return "鱼饵编号无效"
+                        bait = baits[bait_index - 1]
+                        actual_prefix_id = bait["prefix_id"]
+                        count = bait.get("count", 0)
+                        if count <= 0:
+                            return "该鱼饵数量为0"
+                    except ValueError:
+                        # 尝试按 base_id 查找
+                        found = False
+                        for bait in baits:
+                            if bait["base_id"] == item_ref and bait.get("count", 0) > 0:
+                                actual_prefix_id = bait["prefix_id"]
+                                count = bait["count"]
+                                found = True
+                                break
+                        if not found:
+                            return f"未找到该鱼饵"
+                    
+                    value = calc_bait_value(bait["base_id"], actual_prefix_id, count)
+                    sell_price = int(value * self.star.auction_default_price_percent)
+                    if not user.remove_bait(bait["base_id"], actual_prefix_id, count):
+                        return "出售失败"
+                    user.add_coins(sell_price)
+                    await self.storage.save_user(user)
+                    return f"✅ 已直接出售鱼饵，获得 {sell_price} 金币"
+                
+                elif item_type == "fish":
+                    fish_inv = user.get_fish_inventory()
+                    found = None
+                    for fish in fish_inv:
+                        if fish["fish_id"] == item_ref:
+                            found = fish
+                            break
+                    if not found:
+                        return f"背包中没有 ID 为 {item_ref} 的渔获"
+                    
+                    value = calc_fish_value(found["fish_id"], found["prefix_id"], found["count"])
+                    sell_price = int(value * self.star.auction_default_price_percent)
+                    if not user.remove_fish(found["fish_id"], found["prefix_id"], found["count"]):
+                        return "出售失败"
+                    user.add_coins(sell_price)
+                    await self.storage.save_user(user)
+                    return f"✅ 已直接出售渔获，获得 {sell_price} 金币"
+                
+                elif item_type == "ticket":
+                    ticket_id = item_ref
+                    count = user.get_enchant_ticket_count(ticket_id)
+                    if count <= 0:
+                        return "你没有该附魔券"
+                    # 附魔券固定价值 50 金币/张
+                    value = 50 * count
+                    sell_price = int(value * self.star.auction_default_price_percent)
+                    if not user.remove_enchant_ticket(ticket_id, count):
+                        return "出售失败"
+                    user.add_coins(sell_price)
+                    await self.storage.save_user(user)
+                    return f"✅ 已直接出售附魔券 x{count}，获得 {sell_price} 金币"
+                
+                return "无效的物品类型"
+        
+        if action in ("上架", "listing"):
+            if len(args) < 2:
+                return "用法: /拍卖 上架 <类型> <编号/ID> [价格]\n类型: rod(钓竿), bait(鱼饵), fish(渔获), ticket(附魔券)"
+            item_type = args[0].lower()
+            item_ref = args[1]
+            custom_price = None
+            if len(args) > 2:
+                try:
+                    custom_price = int(args[2])
+                except ValueError:
+                    return "价格必须是数字"
+            
+            async with self._get_user_lock(user_id):
+                user = await self.storage.get_user(user_id)
+                seller_name = event.get_sender_name() or user_id[:8]
+                
+                item_data = {"type": item_type}
+                
+                if item_type == "rod":
+                    try:
+                        rod_index = int(item_ref)
+                    except ValueError:
+                        return "钓竿编号必须是数字"
+                    rods = user.get_owned_rods()
+                    if rod_index < 1 or rod_index > len(rods):
+                        return "钓竿编号无效。提示：出售/上架后编号会重新排序，请先重新查询背包或我的钓竿获取最新编号。"
+                    rod = rods[rod_index - 1]
+                    current = user.current_rod
+                    if rod.get("instance_id") == current.get("instance_id"):
+                        return "不能上架当前装备的钓竿"
+                    
+                    value = calc_rod_value(rod["base_id"], rod["prefix_id"], rod.get("skills"))
+                    default_price = int(value * self.star.auction_default_price_percent)
+                    min_price = int(default_price * (1 - self.star.auction_price_range_percent))
+                    max_price = int(default_price * (1 + self.star.auction_price_range_percent))
+                    
+                    if custom_price is not None:
+                        if custom_price < min_price or custom_price > max_price:
+                            return f"价格必须在 {min_price} ~ {max_price} 金币之间（默认{default_price}）"
+                        price = custom_price
+                    else:
+                        price = default_price
+                    
+                    if not user.remove_rod(rod["instance_id"]):
+                        return "上架失败"
+                    
+                    item_data.update({
+                        "base_id": rod["base_id"],
+                        "prefix_id": rod["prefix_id"],
+                        "instance_id": rod["instance_id"],
+                        "enchant_count": rod.get("enchant_count", 0),
+                        "skills": rod.get("skills", {}),
+                        "name": self._format_rod_name(rod),
+                        "price": price,
+                    })
+                
+                elif item_type == "bait":
+                    baits = user.get_baits()
+                    try:
+                        bait_index = int(item_ref)
+                        if bait_index < 1 or bait_index > len(baits):
+                            return "鱼饵编号无效"
+                        bait = baits[bait_index - 1]
+                        actual_prefix_id = bait["prefix_id"]
+                        count = bait.get("count", 0)
+                    except ValueError:
+                        found = False
+                        for bait in baits:
+                            if bait["base_id"] == item_ref and bait.get("count", 0) > 0:
+                                actual_prefix_id = bait["prefix_id"]
+                                count = bait["count"]
+                                found = True
+                                break
+                        if not found:
+                            return "未找到该鱼饵"
+                    
+                    value = calc_bait_value(bait["base_id"], actual_prefix_id, count)
+                    default_price = int(value * self.star.auction_default_price_percent)
+                    min_price = int(default_price * (1 - self.star.auction_price_range_percent))
+                    max_price = int(default_price * (1 + self.star.auction_price_range_percent))
+                    
+                    if custom_price is not None:
+                        if custom_price < min_price or custom_price > max_price:
+                            return f"价格必须在 {min_price} ~ {max_price} 金币之间（默认{default_price}）"
+                        price = custom_price
+                    else:
+                        price = default_price
+                    
+                    if not user.remove_bait(bait["base_id"], actual_prefix_id, count):
+                        return "上架失败"
+                    
+                    base = get_bait_by_id(bait["base_id"])
+                    prefix = get_bait_prefix(actual_prefix_id)
+                    name = f"{prefix['name']}{base['name']}" if base and prefix else "未知鱼饵"
+                    item_data.update({
+                        "base_id": bait["base_id"],
+                        "prefix_id": actual_prefix_id,
+                        "count": count,
+                        "name": name,
+                        "price": price,
+                    })
+                
+                elif item_type == "fish":
+                    fish_inv = user.get_fish_inventory()
+                    found = None
+                    for fish in fish_inv:
+                        if fish["fish_id"] == item_ref:
+                            found = fish
+                            break
+                    if not found:
+                        return f"背包中没有 ID 为 {item_ref} 的渔获"
+                    
+                    value = calc_fish_value(found["fish_id"], found["prefix_id"], found["count"])
+                    default_price = int(value * self.star.auction_default_price_percent)
+                    min_price = int(default_price * (1 - self.star.auction_price_range_percent))
+                    max_price = int(default_price * (1 + self.star.auction_price_range_percent))
+                    
+                    if custom_price is not None:
+                        if custom_price < min_price or custom_price > max_price:
+                            return f"价格必须在 {min_price} ~ {max_price} 金币之间（默认{default_price}）"
+                        price = custom_price
+                    else:
+                        price = default_price
+                    
+                    if not user.remove_fish(found["fish_id"], found["prefix_id"], found["count"]):
+                        return "上架失败"
+                    
+                    fish_info = get_fish_by_id(found["fish_id"])
+                    prefix = get_prefix_by_id(found["prefix_id"])
+                    name = f"{prefix['name']}{fish_info['name']}" if fish_info and prefix else "未知鱼类"
+                    item_data.update({
+                        "fish_id": found["fish_id"],
+                        "prefix_id": found["prefix_id"],
+                        "count": found["count"],
+                        "name": name,
+                        "price": price,
+                    })
+                
+                elif item_type == "ticket":
+                    ticket_id = item_ref
+                    count = user.get_enchant_ticket_count(ticket_id)
+                    if count <= 0:
+                        return "你没有该附魔券"
+                    
+                    value = 50 * count
+                    default_price = int(value * self.star.auction_default_price_percent)
+                    min_price = int(default_price * (1 - self.star.auction_price_range_percent))
+                    max_price = int(default_price * (1 + self.star.auction_price_range_percent))
+                    
+                    if custom_price is not None:
+                        if custom_price < min_price or custom_price > max_price:
+                            return f"价格必须在 {min_price} ~ {max_price} 金币之间（默认{default_price}）"
+                        price = custom_price
+                    else:
+                        price = default_price
+                    
+                    if not user.remove_enchant_ticket(ticket_id, count):
+                        return "上架失败"
+                    
+                    ticket_info = None
+                    for t in ENCHANT_TICKETS:
+                        if t["id"] == ticket_id:
+                            ticket_info = t
+                            break
+                    name = ticket_info["name"] if ticket_info else "未知附魔券"
+                    item_data.update({
+                        "ticket_id": ticket_id,
+                        "count": count,
+                        "name": name,
+                        "price": price,
+                    })
+                
+                else:
+                    return "无效的物品类型"
+                
+                listing = await self.storage.list_auction_item(user_id, seller_name, item_data)
+                await self.storage.save_user(user)
+                return f"✅ 上架成功！\n📦 [{listing['id']}] {item_data.get('name', '未知')}\n💰 售价: {price} 金币\n⏰ 保留{self.star.auction_duration_hours}小时" + self._get_latest_rods_summary(user)
+        
+        if action in ("取消", "cancel"):
+            if not args:
+                return "用法: /拍卖 取消 <上架编号>"
+            listing_id = args[0]
+            
+            async with self._get_user_lock(user_id):
+                user = await self.storage.get_user(user_id)
+                listing = await self.storage.cancel_auction_listing(listing_id, user_id)
+                if not listing:
+                    return "未找到该上架物品或你不是卖家"
+                
+                # 退还物品
+                item_data = listing.get("item_data", {})
+                item_type = item_data.get("type", "")
+                
+                if item_type == "rod":
+                    user.add_rod(
+                        item_data["base_id"],
+                        item_data["prefix_id"],
+                        item_data.get("skills", {}),
+                        item_data.get("enchant_count", 0),
+                        item_data.get("instance_id")
+                    )
+                elif item_type == "bait":
+                    user.add_bait(item_data["base_id"], item_data["prefix_id"], item_data.get("count", 1))
+                elif item_type == "fish":
+                    user.add_fish(item_data["fish_id"], item_data["prefix_id"], item_data.get("count", 1))
+                elif item_type == "ticket":
+                    user.add_enchant_ticket(item_data["ticket_id"], item_data.get("count", 1))
+                
+                await self.storage.save_user(user)
+                return f"✅ 已取消上架，{item_data.get('name', '物品')} 已退回" + self._get_latest_rods_summary(user)
+        
+        if action in ("购买", "buy"):
+            if not args:
+                return "用法: /拍卖 购买 <上架编号>"
+            listing_id = args[0]
+            
+            #  buyer 和 seller 需要排序加锁
+            buyer_id = user_id
+            listing = (await self.storage.search_auctions("", 1, 9999))[0]
+            target = None
+            for lst in listing:
+                if lst["id"] == listing_id:
+                    target = lst
+                    break
+            if not target:
+                return "未找到该上架物品"
+            
+            seller_id = target["seller_id"]
+            if seller_id == buyer_id:
+                return "不能购买自己的物品"
+            
+            first_id, second_id = sorted([buyer_id, seller_id])
+            async with self._get_user_lock(first_id):
+                async with self._get_user_lock(second_id):
+                    buyer = await self.storage.get_user(buyer_id)
+                    seller = await self.storage.get_user(seller_id)
+                    
+                    price = target["price"]
+                    if buyer.coins < price:
+                        return f"金币不足！需要 {price} 金币，你只有 {buyer.coins} 金币"
+                    
+                    # 执行购买（从全局移除）
+                    bought = await self.storage.buy_auction_item(listing_id, buyer_id)
+                    if not bought:
+                        return "购买失败，该物品可能已被买走或过期"
+                    
+                    # 扣买方金币
+                    buyer.remove_coins(price)
+                    
+                    # 给卖方金币
+                    seller.add_coins(price)
+                    
+                    # 转移物品给买方
+                    item_data = bought.get("item_data", {})
+                    item_type = item_data.get("type", "")
+                    
+                    if item_type == "rod":
+                        buyer.add_rod(
+                            item_data["base_id"],
+                            item_data["prefix_id"],
+                            item_data.get("skills", {}),
+                            item_data.get("enchant_count", 0),
+                            item_data.get("instance_id")
+                        )
+                    elif item_type == "bait":
+                        buyer.add_bait(item_data["base_id"], item_data["prefix_id"], item_data.get("count", 1))
+                    elif item_type == "fish":
+                        buyer.add_fish(item_data["fish_id"], item_data["prefix_id"], item_data.get("count", 1))
+                    elif item_type == "ticket":
+                        buyer.add_enchant_ticket(item_data["ticket_id"], item_data.get("count", 1))
+                    
+                    await self.storage.save_user(buyer)
+                    await self.storage.save_user(seller)
+                    return f"✅ 购买成功！\n📦 {item_data.get('name', '未知物品')}\n💰 花费: {price} 金币\n📦 剩余: {buyer.coins} 金币" + self._get_latest_rods_summary(buyer)
+        
+        return "未知操作。用法:\n/拍卖 列表 [页码]\n/拍卖 搜索 <关键词> [页码]\n/拍卖 上架 <类型> <编号> [价格]\n/拍卖 出售 <类型> <编号>\n/拍卖 取消 <上架编号>\n/拍卖 购买 <上架编号>"
+    
+    async def cmd_enchant(self, event, rod_index: int = 0) -> str:
+        """附魔命令 - 随机为钓竿附加/替换技能。rod_index=0 时默认附魔当前装备钓竿"""
+        user_id = event.get_sender_id()
+        async with self._get_user_lock(user_id):
+            user = await self.storage.get_user(user_id)
+            
+            rods = user.get_owned_rods()
+            # rod_index=0 或未提供时，使用当前装备钓竿
+            if rod_index < 1 or rod_index > len(rods):
+                current = user.current_rod
+                found = False
+                for i, r in enumerate(rods, 1):
+                    if r.get("instance_id") == current.get("instance_id"):
+                        rod_index = i
+                        found = True
+                        break
+                if not found:
+                    return f"钓竿编号无效，你有 {len(rods)} 根钓竿"
+            
+            rod = dict(rods[rod_index - 1])
+            prefix = get_rod_prefix(rod["prefix_id"])
+            max_slots = prefix.get("max_slots", 0)
+            
+            if max_slots <= 0:
+                return "这根钓竿没有附魔槽位，无法附魔"
+            
+            current_skills = dict(rod.get("skills", {}) or {})
+            
+            # 计算价格
+            price = self._calc_enchant_price(rod)
+            
+            # 检查附魔券
+            best_ticket = user.get_best_enchant_ticket()
+            use_ticket = False
+            ticket_discount = 0
+            if best_ticket:
+                use_ticket = True
+                ticket_discount = best_ticket["discount"]
+                final_price = int(price * (1 - ticket_discount))
+            else:
+                final_price = price
+            
+            if use_ticket:
+                if not user.remove_enchant_ticket(best_ticket["ticket_id"], 1):
+                    return "附魔券扣除失败"
+            else:
+                if user.coins < final_price:
+                    return f"金币不足！附魔需要 {final_price} 金币，你只有 {user.coins} 金币"
+                user.remove_coins(final_price)
+            
+            # 执行附魔
+            available = self._get_available_skills()
+            
+            # 新技能基础值在 10%~30% 之间随机
+            new_skill_val = round(random.uniform(0.10, 0.30), 2)
+            
+            # 如果槽位已满，随机替换一个已有技能；否则随机新增一个
+            if len(current_skills) >= max_slots:
+                # 槽位已满，随机替换
+                skill_to_replace = random.choice(list(current_skills.keys()))
+                new_skill = random.choice([s for s in available if s != skill_to_replace])
+                current_skills[new_skill] = new_skill_val
+                del current_skills[skill_to_replace]
+                result_msg = f"🎲 槽位已满，替换 {ROD_SKILL_DESCRIPTIONS.get(skill_to_replace, skill_to_replace)} → {ROD_SKILL_DESCRIPTIONS.get(new_skill, new_skill)}"
+            else:
+                # 新增技能
+                remaining = [s for s in available if s not in current_skills]
+                if remaining:
+                    new_skill = random.choice(remaining)
+                else:
+                    new_skill = random.choice(available)
+                current_skills[new_skill] = new_skill_val
+                result_msg = f"🎲 获得新技能 {ROD_SKILL_DESCRIPTIONS.get(new_skill, new_skill)}"
+            
+            new_enchant_count = rod.get("enchant_count", 0) + 1
+            user.update_rod_skills(rod["instance_id"], new_enchant_count, current_skills)
+            await self.storage.save_user(user)
+            
+            rod_name = self._format_rod_name(rod)
+            ticket_msg = f"（使用{best_ticket['ticket_id']}，省{int(ticket_discount*100)}%）" if use_ticket else ""
+            return f"✨ 附魔成功！{ticket_msg}\n🎣 {rod_name}\n{result_msg}+{int(new_skill_val*100)}%\n📈 累计附魔 {new_enchant_count} 次"
+    
+    async def cmd_enchant_upgrade(self, event, arg1: str = "", arg2: str = "") -> str:
+        """附魔升级命令 - 升级指定技能。自动识别参数: 纯数字为钓竿编号，其他为技能名"""
+        user_id = event.get_sender_id()
+        
+        # 解析参数：纯数字是钓竿编号，其他是技能名
+        rod_index = 0
+        skill_name = ""
+        for a in [arg1, arg2]:
+            if not a:
+                continue
+            if a.isdigit():
+                rod_index = int(a)
+            else:
+                skill_name = a
+        
+        # 将中文技能名映射到ID
+        skill_name_map = {
+            "迅捷": "swift", "swift": "swift",
+            "幸运": "lucky", "lucky": "lucky",
+            "丰收": "harvest", "harvest": "harvest",
+            "寻宝": "treasure", "treasure": "treasure",
+            "潮汐": "tide", "tide": "tide",
+            "神慧": "exp_boost", "exp_boost": "exp_boost",
+        }
+        skill_id = skill_name_map.get(skill_name.lower(), skill_name.lower())
+        if not skill_id:
+            return "请指定要升级的技能名，如: /附魔升级 迅捷\n可选: 迅捷/幸运/丰收/寻宝/潮汐/神慧"
+        
+        async with self._get_user_lock(user_id):
+            user = await self.storage.get_user(user_id)
+            
+            rods = user.get_owned_rods()
+            # rod_index=0 或未提供时，使用当前装备钓竿
+            if rod_index < 1 or rod_index > len(rods):
+                current = user.current_rod
+                found = False
+                for i, r in enumerate(rods, 1):
+                    if r.get("instance_id") == current.get("instance_id"):
+                        rod_index = i
+                        found = True
+                        break
+                if not found:
+                    return f"钓竿编号无效，你有 {len(rods)} 根钓竿"
+            
+            rod = dict(rods[rod_index - 1])
+            current_skills = dict(rod.get("skills", {}) or {})
+            
+            if skill_id not in current_skills:
+                return f"该钓竿没有 {ROD_SKILL_DESCRIPTIONS.get(skill_id, skill_id)} 技能，请先附魔"
+            
+            current_val = current_skills[skill_id]
+            if current_val >= ENCHANT_CONFIG["max_skill_value"]:
+                return f"{ROD_SKILL_DESCRIPTIONS.get(skill_id, skill_id)} 已达到最高等级（{int(ENCHANT_CONFIG['max_skill_value']*100)}%）"
+            
+            # 计算升级价格
+            price = self._calc_upgrade_price(rod)
+            if user.coins < price:
+                return f"金币不足！升级需要 {price} 金币，你只有 {user.coins} 金币"
+            
+            user.remove_coins(price)
+            current_skills[skill_id] = round(current_val + ENCHANT_CONFIG["upgrade_increment"], 2)
+            new_enchant_count = rod.get("enchant_count", 0) + 1
+            user.update_rod_skills(rod["instance_id"], new_enchant_count, current_skills)
+            await self.storage.save_user(user)
+            
+            rod_name = self._format_rod_name(rod)
+            return f"⬆️ 升级成功！\n🎣 {rod_name}\n{ROD_SKILL_DESCRIPTIONS.get(skill_id, skill_id)}: {int(current_val*100)}% → {int(current_skills[skill_id]*100)}%\n💰 花费: {price} 金币\n📈 累计附魔 {new_enchant_count} 次"

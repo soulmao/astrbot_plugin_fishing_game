@@ -60,23 +60,23 @@ ROD_BASES = [
 
 # 钓竿前缀
 ROD_PREFIXES = [
-    {"id": "rod_pref_01", "name": "破旧的", "multiplier": 0.5},
-    {"id": "rod_pref_02", "name": "老化的", "multiplier": 0.7},
-    {"id": "rod_pref_03", "name": "普通的", "multiplier": 1.0},
-    {"id": "rod_pref_04", "name": "耐用的", "multiplier": 1.2, "min_level": 2},
-    {"id": "rod_pref_05", "name": "精良的", "multiplier": 1.5, "min_level": 2},
-    {"id": "rod_pref_06", "name": "结实的", "multiplier": 1.8, "min_level": 3,
+    {"id": "rod_pref_01", "name": "破旧的",  "multiplier": 0.5, "max_slots": 0},
+    {"id": "rod_pref_02", "name": "老化的",  "multiplier": 0.7, "max_slots": 1},
+    {"id": "rod_pref_03", "name": "普通的",  "multiplier": 1.0, "max_slots": 1},
+    {"id": "rod_pref_04", "name": "耐用的",  "multiplier": 1.2, "max_slots": 2, "min_level": 2},
+    {"id": "rod_pref_05", "name": "精良的",  "multiplier": 1.5, "max_slots": 2, "min_level": 2},
+    {"id": "rod_pref_06", "name": "结实的",  "multiplier": 1.8, "max_slots": 3, "min_level": 3,
      "skills": {"swift": 0.10}},
-    {"id": "rod_pref_07", "name": "精致的", "multiplier": 2.0, "min_level": 4,
+    {"id": "rod_pref_07", "name": "精致的",  "multiplier": 2.0, "max_slots": 4, "min_level": 4,
      "skills": {"swift": 0.20, "lucky": 0.05}},
-    {"id": "rod_pref_08", "name": "华丽的", "multiplier": 2.5, "min_level": 5,
+    {"id": "rod_pref_08", "name": "华丽的",  "multiplier": 2.5, "max_slots": 5, "min_level": 5,
      "skills": {"swift": 0.30, "lucky": 0.08, "harvest": 0.10}},
-    {"id": "rod_pref_09", "name": "史诗的", "multiplier": 3.0, "min_level": 6,
+    {"id": "rod_pref_09", "name": "史诗的",  "multiplier": 3.0, "max_slots": 6, "min_level": 6,
      "skills": {"swift": 0.40, "lucky": 0.12, "harvest": 0.15, "treasure": 0.12}},
-    {"id": "rod_pref_10", "name": "传说的", "multiplier": 5.0, "min_level": 7,
+    {"id": "rod_pref_10", "name": "传说的",  "multiplier": 5.0, "max_slots": 8, "min_level": 7,
      "skills": {"swift": 0.50, "lucky": 0.20, "harvest": 0.25, "treasure": 0.20, "tide": 0.05, "exp_boost": 0.30}},
     # 古龙收藏系列钓竿前缀
-    {"id": "rod_pref_11", "name": "古龙收藏的", "multiplier": 4.0, "min_level": 7,
+    {"id": "rod_pref_11", "name": "古龙收藏的", "multiplier": 4.0, "max_slots": 10, "min_level": 7,
      "skills": {"swift": 0.35, "lucky": 0.25, "harvest": 0.20, "treasure": 0.25, "tide": 0.08, "exp_boost": 0.40}},
 ]
 
@@ -133,10 +133,32 @@ SHOP_ITEMS = {
     ]
 }
 
+# 附魔券
+ENCHANT_TICKETS = [
+    {"id": "ench_ticket_001", "name": "普通的附魔券", "quality": "common",   "discount": 0.20, "weight": 0.0100},
+    {"id": "ench_ticket_002", "name": "精良的附魔券", "quality": "excellent","discount": 0.40, "weight": 0.0040},
+    {"id": "ench_ticket_003", "name": "史诗的附魔券", "quality": "epic",     "discount": 0.50, "weight": 0.0015},
+    {"id": "ench_ticket_004", "name": "传说的附魔券", "quality": "legendary","discount": 0.60, "weight": 0.0005},
+]
+
 # 赠送限制
 GIVE_LIMITS = {
     "daily_limit": 10,
     "max_per_give": 99,
+}
+
+# 拍卖行配置
+AUCTION_CONFIG = {
+    "default_price_percent": 0.30,   # 默认上架价格 = 价值 × 30%
+    "price_range_percent": 0.30,     # 价格浮动范围 ±30%
+    "listing_duration_hours": 24,    # 拍卖物品保留时长
+}
+
+# 附魔配置
+ENCHANT_CONFIG = {
+    "base_price_percent": 0.30,      # 附魔基础价为鱼竿价值的 30%
+    "max_skill_value": 0.50,         # 单技能升级上限 50%
+    "upgrade_increment": 0.05,       # 每次升级增加 5%
 }
 
 def get_fish_by_id(fish_id: str) -> dict:
@@ -176,6 +198,72 @@ def get_next_level_exp(level: int) -> Optional[int]:
         if lvl["level"] == level + 1:
             return lvl["exp_required"]
     return None  # 已满级
+
+
+def get_rod_prefix(prefix_id: str) -> dict:
+    for p in ROD_PREFIXES:
+        if p["id"] == prefix_id:
+            return p
+    return ROD_PREFIXES[2]  # 默认"普通的"
+
+
+def get_bait_prefix(prefix_id: str) -> dict:
+    for p in BAIT_PREFIXES:
+        if p["id"] == prefix_id:
+            return p
+    return BAIT_PREFIXES[1]  # 默认"普通的"
+
+
+def get_rod_shop_price(base_id: str) -> int:
+    """从 SHOP_ITEMS 查钓竿基础商店售价"""
+    for rod in SHOP_ITEMS.get("rods", []):
+        if rod["base_id"] == base_id:
+            return rod["price"]
+    return 0
+
+
+def get_bait_shop_price(base_id: str) -> int:
+    """从 SHOP_ITEMS 查鱼饵基础商店单价"""
+    for bait in SHOP_ITEMS.get("baits", []):
+        if bait["base_id"] == base_id:
+            return bait["price"]
+    return 0
+
+
+def calc_rod_value(base_id: str, prefix_id: str, skills: dict = None) -> int:
+    """计算钓竿价值 = 商店售价 × 前缀倍率 × ∏(1 + skill_value)"""
+    rod_shop = get_rod_shop_price(base_id)
+    prefix = get_rod_prefix(prefix_id)
+    shop_price = int(rod_shop * prefix["multiplier"])
+    if shop_price <= 0:
+        shop_price = 50  # 保底价值（如木制钓竿商店价0）
+    multiplier = 1.0
+    # 优先使用传入的 skills，否则使用前缀默认 skills
+    effective_skills = skills if skills is not None else prefix.get("skills", {})
+    for val in effective_skills.values():
+        multiplier *= (1 + val)
+    return int(shop_price * multiplier)
+
+
+def calc_bait_value(base_id: str, prefix_id: str, count: int) -> int:
+    """鱼饵价值 = 商店单价 × 前缀倍率 × 数量"""
+    bait_shop = get_bait_shop_price(base_id)
+    prefix = get_bait_prefix(prefix_id)
+    unit_price = int(bait_shop * prefix["multiplier"])
+    return unit_price * count
+
+
+def calc_fish_value(fish_id: str, prefix_id: str, count: int) -> int:
+    """鱼类价值 = base_price × price_multiplier × count（与售价一致）"""
+    fish = get_fish_by_id(fish_id)
+    prefix = get_prefix_by_id(prefix_id)
+    if not fish or not prefix:
+        return 0
+    price = int(fish["base_price"] * prefix["price_multiplier"])
+    # 古龙收藏系列鱼额外 20% 收藏家溢价
+    if prefix_id == "pref_014":
+        price = int(price * 1.2)
+    return price * count
 
 
 # 钓竿技能说明
