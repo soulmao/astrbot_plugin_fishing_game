@@ -477,8 +477,9 @@ class FishingGameCommands:
             
             rod = user.current_rod
             rod_prefix = self._get_rod_prefix(rod["prefix_id"])
-            # 优先使用钓竿自身的 skills（附魔后），否则使用前缀默认 skills
-            skills = rod.get("skills", {}) or rod_prefix.get("skills", {})
+            # 叠加：前缀默认技能 + 附魔技能覆盖同名键
+            skills = dict(rod_prefix.get("skills", {}))
+            skills.update(rod.get("skills", {}) or {})
             
             # 解析钓竿技能数值
             swift_val = skills.get("swift", 0)

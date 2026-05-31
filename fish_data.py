@@ -238,8 +238,10 @@ def calc_rod_value(base_id: str, prefix_id: str, skills: dict = None) -> int:
     if shop_price <= 0:
         shop_price = 50  # 保底价值（如木制钓竿商店价0）
     multiplier = 1.0
-    # 优先使用传入的 skills，否则使用前缀默认 skills
-    effective_skills = skills if skills is not None else prefix.get("skills", {})
+    # 叠加：前缀默认技能 + 附魔技能覆盖同名键
+    effective_skills = dict(prefix.get("skills", {}))
+    if skills is not None:
+        effective_skills.update(skills)
     for val in effective_skills.values():
         multiplier *= (1 + val)
     return int(shop_price * multiplier)
