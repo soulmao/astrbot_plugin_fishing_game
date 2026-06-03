@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🎣 钓鱼游戏数据管理台</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;background:#f5f7fa;color:#333;line-height:1.6}
+.container{max-width:1400px;margin:0 auto;padding:20px}
+header{background:#2c3e50;color:#fff;padding:16px 24px;border-radius:8px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center}
+header h1{font-size:20px}
+.nav{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.nav button{padding:8px 16px;border:none;border-radius:6px;background:#e2e8f0;color:#475569;cursor:pointer;font-size:14px;transition:.2s}
+.nav button:hover{background:#cbd5e1}
+.nav button.active{background:#3b82f6;color:#fff}
+.card{background:#fff;border-radius:8px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.1);margin-bottom:16px}
+.card h2{font-size:16px;margin-bottom:12px;color:#1e293b;display:flex;justify-content:space-between;align-items:center}
+.btn{padding:6px 14px;border:none;border-radius:6px;cursor:pointer;font-size:13px;transition:.2s}
+.btn-primary{background:#3b82f6;color:#fff}
+.btn-primary:hover{background:#2563eb}
+.btn-danger{background:#ef4444;color:#fff}
+.btn-danger:hover{background:#dc2626}
+.btn-success{background:#22c55e;color:#fff}
+.btn-success:hover{background:#16a34a}
+.btn-sm{padding:4px 10px;font-size:12px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:10px 12px;text-align:left;border-bottom:1px solid #e2e8f0}
+th{background:#f8fafc;font-weight:600;color:#475569;font-size:12px;text-transform:uppercase;letter-spacing:.3px}
+tr:hover{background:#f8fafc}
+td{vertical-align:middle}
+.actions{display:flex;gap:6px}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;justify-content:center;align-items:center;z-index:100;padding:20px}
+.modal-overlay.active{display:flex}
+.modal{background:#fff;border-radius:12px;width:100%;max-width:560px;max-height:90vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.modal-header{padding:16px 20px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center}
+.modal-header h3{font-size:16px}
+.modal-close{background:none;border:none;font-size:22px;cursor:pointer;color:#94a3b8;line-height:1}
+.modal-close:hover{color:#475569}
+.modal-body{padding:20px}
+.form-group{margin-bottom:14px}
+.form-group label{display:block;font-size:13px;font-weight:500;color:#475569;margin-bottom:4px}
+.form-group input,.form-group select{width:100%;padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;outline:none;transition:.2s}
+.form-group input:focus,.form-group select:focus{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.1)}
+.form-group small{color:#94a3b8;font-size:11px;margin-top:2px;display:block}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.form-error{color:#ef4444;font-size:12px;margin-top:4px;display:none}
+.form-error.show{display:block}
+.form-group input.error{border-color:#ef4444}
+.checkbox-group{display:flex;gap:16px;flex-wrap:wrap;margin-top:4px}
+.checkbox-item{display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px}
+.checkbox-item input{width:auto}
+.skills-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:6px}
+.skill-item{background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px}
+.skill-item label{display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;margin-bottom:6px}
+.skill-item input[type=number]{width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;font-size:13px}
+.skill-item input[type=number]:disabled{background:#f1f5f9;color:#94a3b8}
+.toolbar{display:flex;gap:10px;align-items:center;margin-top:16px;flex-wrap:wrap}
+.status-badge{padding:4px 10px;border-radius:4px;font-size:12px;font-weight:500}
+.status-ok{background:#dcfce7;color:#166534}
+.status-warn{background:#fef3c7;color:#92400e}
+.empty{text-align:center;color:#94a3b8;padding:40px;font-size:14px}
+.footer{margin-top:20px;padding:16px;text-align:center;color:#94a3b8;font-size:12px}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:#f1f5f9}
+::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:#94a3b8}
+</style>
+</head>
+<body>
+<div class="container">
+<header><h1>🎣 钓鱼游戏数据管理台</h1><span style="font-size:12px;opacity:.8">编辑后导出覆盖 fish_data.py</span></header>
+<div class="nav" id="nav"></div>
+<div class="card" id="content"></div>
+<div class="toolbar">
+  <button class="btn btn-success" onclick="exportPython()">📥 导出 fish_data.py</button>
+  <span id="exportStatus"></span>
+</div>
+<div class="footer">纯前端单文件，零外部依赖 | 导出后直接覆盖项目中的 fish_data.py</div>
+</div>
+
+<div class="modal-overlay" id="modal">
+<div class="modal">
+  <div class="modal-header"><h3 id="modalTitle">添加</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+  <div class="modal-body" id="modalBody"></div>
+</div>
+</div>
+
+<script>
+// ==================== 初始数据 ====================
+const DATA = {
+FISH_TYPES: [
+  {id:"fish_001",name:"小杂鱼",rarity:"common",base_price:5,weight:40},
+  {id:"fish_002",name:"鲫鱼",rarity:"common",base_price:8,weight:30},
+  {id:"fish_003",name:"鲤鱼",rarity:"common",base_price:15,weight:20},
+  {id:"fish_004",name:"草鱼",rarity:"common",base_price:20,weight:15},
+  {id:"fish_005",name:"鲢鱼",rarity:"common",base_price:25,weight:10},
+  {id:"fish_006",name:"鳙鱼",rarity:"common",base_price:30,weight:8},
+  {id:"fish_013",name:"罗非鱼",rarity:"common",base_price:12,weight:22},
+  {id:"fish_014",name:"黑鱼",rarity:"common",base_price:35,weight:11},
+  {id:"fish_007",name:"鲈鱼",rarity:"rare",base_price:50,weight:5},
+  {id:"fish_008",name:"鳜鱼",rarity:"rare",base_price:60,weight:4},
+  {id:"fish_009",name:"鳟鱼",rarity:"rare",base_price:70,weight:3},
+  {id:"fish_010",name:"金鱼",rarity:"rare",base_price:100,weight:2},
+  {id:"fish_011",name:"龙鱼",rarity:"legendary",base_price:300,weight:0.5},
+  {id:"fish_012",name:"锦鲤",rarity:"legendary",base_price:500,weight:0.3},
+  {id:"fish_015",name:"美人鱼",rarity:"mythic",base_price:1200,weight:0.15},
+  {id:"fish_016",name:"鲲",rarity:"mythic",base_price:2000,weight:0.10,desc:"北冥之鲲，不知其几千里也"},
+  {id:"fish_017",name:"蛟龙",rarity:"mythic",base_price:1800,weight:0.12},
+  {id:"fish_018",name:"利维坦",rarity:"mythic",base_price:3000,weight:0.05,desc:"深海中的巨兽，圣经中记载的海怪"},
+  {id:"fish_019",name:"九尾龟",rarity:"mythic",base_price:2500,weight:0.08}
+],
+FISH_PREFIXES: [
+  {id:"pref_001",name:"普通的",rarity:"common",price_multiplier:1.0,weight:35},
+  {id:"pref_002",name:"健康的",rarity:"common",price_multiplier:1.3,weight:25},
+  {id:"pref_003",name:"肥美的",rarity:"common",price_multiplier:1.5,weight:15},
+  {id:"pref_004",name:"银色的",rarity:"rare",price_multiplier:2.0,weight:8,min_level:3},
+  {id:"pref_005",name:"红色的",rarity:"rare",price_multiplier:2.2,weight:6,min_level:3},
+  {id:"pref_006",name:"蓝色的",rarity:"rare",price_multiplier:2.5,weight:4,min_level:4},
+  {id:"pref_007",name:"金色的",rarity:"legendary",price_multiplier:5.0,weight:1.5,min_level:5},
+  {id:"pref_008",name:"濒死的",rarity:"rare",price_multiplier:0.5,weight:3},
+  {id:"pref_009",name:"奄奄一息的",rarity:"rare",price_multiplier:0.3,weight:1.5},
+  {id:"pref_010",name:"传奇的",rarity:"legendary",price_multiplier:10.0,weight:0.2,min_level:5,requires_gold_rod:true},
+  {id:"pref_011",name:"神灵的",rarity:"legendary",price_multiplier:15.0,weight:0.05,min_level:7,requires_divine_rod:true},
+  {id:"pref_012",name:"远古的",rarity:"mythic",price_multiplier:20.0,weight:0.03,min_level:6,requires_gold_rod:true},
+  {id:"pref_013",name:"神话的",rarity:"mythic",price_multiplier:30.0,weight:0.01,min_level:7,requires_divine_rod:true},
+  {id:"pref_014",name:"古龙收藏的",rarity:"legendary",price_multiplier:18.0,weight:0.06,min_level:6,requires_gold_rod:true}
+],
+ROD_BASES: [
+  {id:"rod_001",name:"木制钓竿",quality:"common",exp_multiplier:1.0,rarity_bonus:0},
+  {id:"rod_002",name:"竹制钓竿",quality:"excellent",exp_multiplier:1.2,rarity_bonus:0.05},
+  {id:"rod_003",name:"碳纤维钓竿",quality:"rare",exp_multiplier:1.5,rarity_bonus:0.10},
+  {id:"rod_004",name:"金色钓竿",quality:"legendary",exp_multiplier:2.0,rarity_bonus:0.20},
+  {id:"rod_005",name:"神级钓竿",quality:"mythic",exp_multiplier:3.0,rarity_bonus:0.35},
+  {id:"rod_006",name:"金币钓竿",quality:"legendary",exp_multiplier:2.5,rarity_bonus:0.25,no_prefix:true},
+  {id:"rod_007",name:"胡萝卜钓竿",quality:"epic",exp_multiplier:1.8,rarity_bonus:0.15,no_prefix:true}
+],
+ROD_PREFIXES: [
+  {id:"rod_pref_01",name:"破旧的",multiplier:0.5,max_slots:0},
+  {id:"rod_pref_02",name:"老化的",multiplier:0.7,max_slots:1},
+  {id:"rod_pref_03",name:"普通的",multiplier:1.0,max_slots:1},
+  {id:"rod_pref_04",name:"耐用的",multiplier:1.2,max_slots:2,min_level:2},
+  {id:"rod_pref_05",name:"精良的",multiplier:1.5,max_slots:2,min_level:2},
+  {id:"rod_pref_06",name:"结实的",multiplier:1.8,max_slots:3,min_level:3,skills:{swift:0.10}},
+  {id:"rod_pref_07",name:"精致的",multiplier:2.0,max_slots:4,min_level:4,skills:{swift:0.20,lucky:0.05}},
+  {id:"rod_pref_08",name:"华丽的",multiplier:2.5,max_slots:5,min_level:5,skills:{swift:0.30,lucky:0.08,harvest:0.10}},
+  {id:"rod_pref_09",name:"史诗的",multiplier:3.0,max_slots:6,min_level:6,skills:{swift:0.40,lucky:0.12,harvest:0.15,treasure:0.12}},
+  {id:"rod_pref_10",name:"传说的",multiplier:5.0,max_slots:8,min_level:7,skills:{swift:0.50,lucky:0.20,harvest:0.25,treasure:0.20,tide:0.05,exp_boost:0.30}},
+  {id:"rod_pref_11",name:"古龙收藏的",multiplier:4.0,max_slots:10,min_level:7,skills:{swift:0.35,lucky:0.25,harvest:0.20,treasure:0.25,tide:0.08,exp_boost:0.40}},
+  {id:"rod_pref_12",name:"贪婪的",multiplier:2.0,max_slots:5,min_level:5,skills:{greedy:1.0}},
+  {id:"rod_pref_13",name:"诅咒的",multiplier:0.8,max_slots:6,min_level:5,skills:{cursed:1.0}},
+  {id:"rod_pref_14",name:"迅捷的",multiplier:1.5,max_slots:3,min_level:4,skills:{swift:0.60,tide:0.50,fail_chance:0.15}},
+  {id:"rod_pref_15",name:"学徒的",multiplier:0.9,max_slots:2,min_level:3,skills:{exp_boost:0.80,coin_reduce:0.50}},
+  {id:"rod_pref_16",name:"幸运方块的",multiplier:1.8,max_slots:4,min_level:6,skills:{lucky_block:1.0}}
+],
+BAIT_BASES: [
+  {id:"bait_001",name:"蚯蚓",quality:"common",exp_multiplier:1.0,quality_bonus:0},
+  {id:"bait_002",name:"饵料",quality:"excellent",exp_multiplier:1.3,quality_bonus:0.05},
+  {id:"bait_003",name:"香料饵",quality:"rare",exp_multiplier:1.5,quality_bonus:0.10},
+  {id:"bait_004",name:"传说饵",quality:"legendary",exp_multiplier:2.0,quality_bonus:0.20}
+],
+BAIT_PREFIXES: [
+  {id:"bait_pref_01",name:"干瘪的",multiplier:0.5},
+  {id:"bait_pref_02",name:"普通的",multiplier:1.0},
+  {id:"bait_pref_03",name:"新鲜的",multiplier:1.3,min_level:2},
+  {id:"bait_pref_04",name:"香喷喷的",multiplier:1.5,min_level:3},
+  {id:"bait_pref_05",name:"特制的",multiplier:1.8,min_level:4},
+  {id:"bait_pref_06",name:"珍稀的",multiplier:2.0,min_level:5},
+  {id:"bait_pref_07",name:"诱人的",multiplier:2.5,min_level:6},
+  {id:"bait_pref_08",name:"秘制的",multiplier:3.0,min_level:7},
+  {id:"bait_pref_09",name:"古龙收藏的",multiplier:2.8,min_level:7,event_bonus:0.20}
+],
+LEVELS: [
+  {level:1,name:"新手渔夫",exp_required:0},
+  {level:2,name:"入门渔夫",exp_required:100},
+  {level:3,name:"熟练渔夫",exp_required:300},
+  {level:4,name:"老练渔夫",exp_required:600},
+  {level:5,name:"专家渔夫",exp_required:1000},
+  {level:6,name:"大师渔夫",exp_required:2000},
+  {level:7,name:"传说渔夫",exp_required:5000}
+],
+SHOP_ITEMS: {
+  rods:[
+    {base_id:"rod_001",price:0,min_level:1},
+    {base_id:"rod_002",price:200,min_level:2},
+    {base_id:"rod_003",price:500,min_level:4},
+    {base_id:"rod_004",price:2000,min_level:6},
+    {base_id:"rod_005",price:5000,min_level:7},
+    {base_id:"rod_006",price:3000,min_level:6},
+    {base_id:"rod_007",price:1500,min_level:5}
+  ],
+  baits:[
+    {base_id:"bait_001",price:10,quantity:5,min_level:1},
+    {base_id:"bait_002",price:30,quantity:3,min_level:2},
+    {base_id:"bait_003",price:80,quantity:2,min_level:4},
+    {base_id:"bait_004",price:200,quantity:1,min_level:6}
+  ],
+  special:[
+    {id:"refresh_token",name:"刷新券",price:30,quantity:1,min_level:3}
+  ]
+},
+ENCHANT_TICKETS: [
+  {id:"ench_ticket_001",name:"普通的附魔券",quality:"common",discount:0.20,weight:0.0100},
+  {id:"ench_ticket_002",name:"精良的附魔券",quality:"excellent",discount:0.40,weight:0.0040},
+  {id:"ench_ticket_003",name:"史诗的附魔券",quality:"epic",discount:0.50,weight:0.0015},
+  {id:"ench_ticket_004",name:"传说的附魔券",quality:"legendary",discount:0.60,weight:0.0005}
+],
+GIVE_LIMITS: {daily_limit:10,max_per_give:99},
+AUCTION_CONFIG: {default_price_percent:0.30,price_range_percent:0.30,listing_duration_hours:24},
+ENCHANT_CONFIG: {base_price_percent:0.30,max_skill_value:0.50,upgrade_increment:0.05}
+};
+
+// 深拷贝，避免修改原始数据
+let data = JSON.parse(JSON.stringify(DATA));
+let currentTab = 'fish_types';
+let editingIndex = -1;
+
+const TABS = [
+  {key:'fish_types',title:'🐟 鱼类'},
+  {key:'fish_prefixes',title:'🏷️ 鱼前缀'},
+  {key:'rod_bases',title:'🎣 钓竿基础'},
+  {key:'rod_prefixes',title:'⚡ 钓竿前缀'},
+  {key:'bait_bases',title:'🪱 鱼饵基础'},
+  {key:'bait_prefixes',title:'🍖 鱼饵前缀'},
+  {key:'levels',title:'📊 等级'},
+  {key:'shop_items',title:'🏪 商店商品'},
+  {key:'enchant_tickets',title:'🎫 附魔券'},
+  {key:'configs',title:'⚙️ 配置'}
+];
+
+const RARITIES = ['common','rare','legendary','mythic'];
+const QUALITIES = ['common','excellent','rare','legendary','mythic'];
+const SKILL_IDS = ['swift','lucky','harvest','treasure','tide','exp_boost','voyage','mending','greedy','cursed','fail_chance','coin_reduce','lucky_block'];
+const SKILL_LABELS = {swift:'⚡迅捷',lucky:'🍀幸运',harvest:'🌾丰收',treasure:'💎寻宝',tide:'🌊潮汐',exp_boost:'✨神慧',voyage:'🧭远航',mending:'🔧经验修补',greedy:'💰贪婪',cursed:'👻诅咒',fail_chance:'💥失误',coin_reduce:'📉清贫',lucky_block:'🎲幸运方块'};
+const SHOP_TYPES = ['rods','baits','special'];
+
+function init() {
+  renderNav();
+  renderContent();
+}
+
+function renderNav() {
+  const nav = document.getElementById('nav');
+  nav.innerHTML = TABS.map(t =>
+    `<button class="${t.key===currentTab?'active':''}" onclick="switchTab('${t.key}')">${t.title}</button>`
+  ).join('');
+}
+
+function switchTab(key) {
+  currentTab = key;
+  renderNav();
+  renderContent();
+}
+
+function getList(key) {
+  if(key==='configs') return [];
+  if(key==='shop_items') return data.SHOP_ITEMS.rods.concat(
+    data.SHOP_ITEMS.baits.map(x=>({...x,_type:'baits'})),
+    data.SHOP_ITEMS.special.map(x=>({...x,_type:'special'}))
+  );
+  return data[key.toUpperCase()]||[];
+}
+
+function setList(key,list) {
+  if(key==='shop_items') {
+    data.SHOP_ITEMS = {rods:[],baits:[],special:[]};
+    for(const x of list) {
+      const t = x._type || 'rods';
+      const c = {...x}; delete c._type;
+      data.SHOP_ITEMS[t].push(c);
+    }
+  } else {
+    data[key.toUpperCase()] = list;
+  }
+}
+
+// ==================== 渲染内容 ====================
+function renderContent() {
+  const el = document.getElementById('content');
+  if(currentTab==='configs') { renderConfigs(el); return; }
+  const list = getList(currentTab);
+  const cfg = getTabConfig(currentTab);
+  let html = `<h2>${cfg.title} <button class="btn btn-primary btn-sm" onclick="openModal()">+ 添加</button></h2>`;
+  if(!list.length) { html += '<div class="empty">暂无数据，点击上方按钮添加</div>'; el.innerHTML=html; return; }
+  html += '<table><thead><tr>' + cfg.cols.map(c=>`<th>${c.label}</th>`).join('') + '<th style="width:90px">操作</th></tr></thead><tbody>';
+  for(let i=0;i<list.length;i++) {
+    const item = list[i];
+    html += '<tr>' + cfg.cols.map(c=>`<td>${formatCell(item,c)}</td>`).join('') +
+      `<td class="actions"><button class="btn btn-primary btn-sm" onclick="openModal(${i})">编辑</button>` +
+      `<button class="btn btn-danger btn-sm" onclick="deleteItem(${i})">删除</button></td></tr>`;
+  }
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+function formatCell(item,col) {
+  const v = item[col.key];
+  if(v===undefined||v===null||v==='') return '<span style="color:#94a3b8">—</span>';
+  if(col.type==='skills' && typeof v==='object') return Object.entries(v).map(([k,val])=>`${SKILL_LABELS[k]||k}+${Math.round(val*100)}%`).join(' | ')||'—';
+  if(col.type==='checkbox') return v ? '✅' : '❌';
+  if(col.type==='number' && col.isPercent) return `${Math.round(v*100)}%`;
+  if(col.key==='_type') return v==='rods'?'钓竿':v==='baits'?'鱼饵':'特殊';
+  return String(v);
+}
+
+function getTabConfig(key) {
+  const configs = {
+    fish_types: {title:'🐟 鱼类', cols:[
+      {key:'id',label:'ID'},{key:'name',label:'名称'},{key:'rarity',label:'稀有度'},
+      {key:'base_price',label:'基础价格'},{key:'weight',label:'权重'},{key:'desc',label:'描述'}
+    ]},
+    fish_prefixes: {title:'🏷️ 鱼前缀', cols:[
+      {key:'id',label:'ID'},{key:'name',label:'名称'},{key:'rarity',label:'稀有度'},
+      {key:'price_multiplier',label:'价格倍率',isPercent:true},{key:'weight',label:'权重'},
+      {key:'min_level',label:'等级要求'},{key:'requires_gold_rod',label:'需金竿',type:'checkbox'},{key:'requires_divine_rod',label:'需神竿',type:'checkbox'}
+    ]},
+    rod_bases: {title:'🎣 钓竿基础', cols:[
+      {key:'id',label:'ID'},{key:'name',label:'名称'},{key:'quality',label:'品质'},
+      {key:'exp_multiplier',label:'经验倍率'},{key:'rarity_bonus',label:'稀有度加成',isPercent:true},
+      {key:'no_prefix',label:'无前缀',type:'checkbox'}
+    ]},
+    rod_prefixes: {title:'⚡ 钓竿前缀', cols:[
+      {key:'id',label:'ID'},{key:'name',label:'名称'},{key:'multiplier',label:'倍率'},
+      {key:'max_slots',label:'附魔槽位'},{key:'min_level',label:'等级要求'},{key:'skills',label:'自带技能',type:'skills'}
+    ]},
+    bait_bases: {title:'🪱 鱼饵基础', cols:[
+      {key:'id',label:'ID'},{key:'name',label:'名称'},{key:'quality',label:'品质'},
+      {key:'exp_multiplier',label:'经验倍率'},{key:'quality_bonus',label:'品质加成',isPercent:true}
+    ]},
+    bait_prefixes: {title:'🍖 鱼饵前缀', cols:[
+      {key:'id',label:'ID'},{key:'name',label:'名称'},{key:'multiplier',label:'倍率'},
+      {key:'min_level',label:'等级要求'},{key:'event_bonus',label:'事件加成',isPercent:true}
+    ]},
+    levels: {title:'📊 等级', cols:[
+      {key:'level',label:'等级'},{key:'name',label:'名称'},{key:'exp_required',label:'所需经验'}
+    ]},
+    shop_items: {title:'🏪 商店商品', cols:[
+      {key:'_type',label:'类型'},{key:'base_id',label:'基础ID'},{key:'id',label:'商品ID'},
+      {key:'name',label:'名称'},{key:'price',label:'价格'},{key:'quantity',label:'数量'},
+      {key:'min_level',label:'等级要求'}
+    ]},
+    enchant_tickets: {title:'🎫 附魔券', cols:[
+      {key:'id',label:'ID'},{key:'name',label:'名称'},{key:'quality',label:'品质'},
+      {key:'discount',label:'折扣',isPercent:true},{key:'weight',label:'掉落权重'}
+    ]}
+  };
+  return configs[key]||{title:'',cols:[]};
+}
+
+function renderConfigs(el) {
+  el.innerHTML = `
+    <h2>⚙️ 全局配置</h2>
+    <div class="form-row">
+      <div class="form-group"><label>每日赠送上限</label><input type="number" id="cfg_daily_limit" value="${data.GIVE_LIMITS.daily_limit}"></div>
+      <div class="form-group"><label>单次赠送上限</label><input type="number" id="cfg_max_per_give" value="${data.GIVE_LIMITS.max_per_give}"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>拍卖默认价格比例</label><input type="number" step="0.01" id="cfg_default_price" value="${data.AUCTION_CONFIG.default_price_percent}"></div>
+      <div class="form-group"><label>拍卖价格浮动比例</label><input type="number" step="0.01" id="cfg_price_range" value="${data.AUCTION_CONFIG.price_range_percent}"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>拍卖保留时长(小时)</label><input type="number" id="cfg_duration" value="${data.AUCTION_CONFIG.listing_duration_hours}"></div>
+      <div class="form-group"><label>附魔基础价格比例</label><input type="number" step="0.01" id="cfg_base_price" value="${data.ENCHANT_CONFIG.base_price_percent}"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>单技能升级上限</label><input type="number" step="0.01" id="cfg_max_skill" value="${data.ENCHANT_CONFIG.max_skill_value}"></div>
+      <div class="form-group"><label>每次升级增量</label><input type="number" step="0.01" id="cfg_upgrade" value="${data.ENCHANT_CONFIG.upgrade_increment}"></div>
+    </div>
+    <button class="btn btn-primary" onclick="saveConfigs()">保存配置</button>
+  `;
+}
+
+function saveConfigs() {
+  data.GIVE_LIMITS.daily_limit = parseInt(document.getElementById('cfg_daily_limit').value)||10;
+  data.GIVE_LIMITS.max_per_give = parseInt(document.getElementById('cfg_max_per_give').value)||99;
+  data.AUCTION_CONFIG.default_price_percent = parseFloat(document.getElementById('cfg_default_price').value)||0.30;
+  data.AUCTION_CONFIG.price_range_percent = parseFloat(document.getElementById('cfg_price_range').value)||0.30;
+  data.AUCTION_CONFIG.listing_duration_hours = parseInt(document.getElementById('cfg_duration').value)||24;
+  data.ENCHANT_CONFIG.base_price_percent = parseFloat(document.getElementById('cfg_base_price').value)||0.30;
+  data.ENCHANT_CONFIG.max_skill_value = parseFloat(document.getElementById('cfg_max_skill').value)||0.50;
+  data.ENCHANT_CONFIG.upgrade_increment = parseFloat(document.getElementById('cfg_upgrade').value)||0.05;
+  showStatus('配置已保存','ok');
+}
+
+
+// ==================== 弹窗表单 ====================
+function openModal(index) {
+  editingIndex = (index===undefined||index===null)?-1:index;
+  const modal = document.getElementById('modal');
+  const title = document.getElementById('modalTitle');
+  const body = document.getElementById('modalBody');
+  const cfg = getTabConfig(currentTab);
+  const list = getList(currentTab);
+  const item = editingIndex>=0 ? JSON.parse(JSON.stringify(list[editingIndex])) : {};
+  title.textContent = (editingIndex>=0?'编辑':'添加') + ' ' + cfg.title.replace(/^.\s*/,'');
+  body.innerHTML = buildForm(currentTab, item) + `
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
+      <button class="btn" onclick="closeModal()" style="background:#e2e8f0;color:#475569">取消</button>
+      <button class="btn btn-primary" onclick="submitForm()">保存</button>
+    </div>`;
+  modal.classList.add('active');
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.remove('active');
+  editingIndex = -1;
+}
+
+function buildForm(tab, item) {
+  const f = (key,label,type,opts)=>`<div class="form-group"><label>${label}</label>`+
+    (type==='select'?`<select id="f_${key}">${(opts||[]).map(o=>`<option value="${o.v}" ${item[key]===o.v?'selected':''}>${o.l}</option>`).join('')}</select>`:
+     type==='checkbox'?`<div class="checkbox-group"><label class="checkbox-item"><input type="checkbox" id="f_${key}" ${item[key]?'checked':''}> 启用</label></div>`:
+     type==='skills'?buildSkillsEditor(item.skills||{}):
+     `<input type="${type||'text'}" id="f_${key}" value="${item[key]!==undefined?item[key]:''}" ${type==='number'?'step="any"':''}>`)+
+    `<div class="form-error" id="err_${key}"></div></div>`;
+  if(tab==='fish_types') return f('id','ID')+f('name','名称')+
+    f('rarity','稀有度','select',RARITIES.map(r=>({v:r,l:r})))+
+    `<div class="form-row">${f('base_price','基础价格','number')}${f('weight','权重','number')}</div>`+
+    f('desc','描述（可选）');
+  if(tab==='fish_prefixes') return f('id','ID')+f('name','名称')+
+    f('rarity','稀有度','select',RARITIES.map(r=>({v:r,l:r})))+
+    `<div class="form-row">${f('price_multiplier','价格倍率','number')}${f('weight','权重','number')}</div>`+
+    f('min_level','等级要求（可选）','number')+f('requires_gold_rod','需要金色钓竿','checkbox')+f('requires_divine_rod','需要神级钓竿','checkbox');
+  if(tab==='rod_bases') return f('id','ID')+f('name','名称')+
+    f('quality','品质','select',QUALITIES.map(q=>({v:q,l:q})))+
+    `<div class="form-row">${f('exp_multiplier','经验倍率','number')}${f('rarity_bonus','稀有度加成','number')}</div>`+
+    f('no_prefix','特种钓竿（不能带前缀）','checkbox');
+  if(tab==='rod_prefixes') return f('id','ID')+f('name','名称')+
+    `<div class="form-row">${f('multiplier','倍率','number')}${f('max_slots','附魔槽位','select',[0,1,2,3,4,5,6,7,8,9,10].map(n=>({v:n,l:n+'个'})))}</div>`+
+    f('min_level','等级要求（可选）','number')+f('skills','自带技能','skills');
+  if(tab==='bait_bases') return f('id','ID')+f('name','名称')+
+    f('quality','品质','select',QUALITIES.map(q=>({v:q,l:q})))+
+    `<div class="form-row">${f('exp_multiplier','经验倍率','number')}${f('quality_bonus','品质加成','number')}</div>`;
+  if(tab==='bait_prefixes') return f('id','ID')+f('name','名称')+f('multiplier','倍率','number')+f('min_level','等级要求（可选）','number')+f('event_bonus','事件加成（可选）','number');
+  if(tab==='levels') return f('level','等级','number')+f('name','名称')+f('exp_required','所需经验','number');
+  if(tab==='shop_items') {
+    const stype = item._type||'rods';
+    let html = `<div class="form-group"><label>商品类型</label><select id="f__type" onchange="toggleShopFields(this.value)">`+
+      SHOP_TYPES.map(t=>`<option value="${t}" ${stype===t?'selected':''}>${t==='rods'?'钓竿':t==='baits'?'鱼饵':'特殊'}</option>`).join('')+'</select></div>';
+    html += `<div id="shop_id_field">${f(stype==='special'?'id':'base_id',stype==='special'?'商品ID':'基础ID')}</div>`;
+    html += f('name','名称');
+    html += `<div class="form-row">${f('price','价格','number')}${f('quantity','数量','number')}</div>`;
+    html += f('min_level','等级要求','number');
+    return html;
+  }
+  if(tab==='enchant_tickets') return f('id','ID')+f('name','名称')+
+    f('quality','品质','select',QUALITIES.map(q=>({v:q,l:q})))+
+    `<div class="form-row">${f('discount','折扣(0~1)','number')}${f('weight','掉落权重','number')}</div>`;
+  return '';
+}
+
+function buildSkillsEditor(skills) {
+  return '<div class="skills-grid">' + SKILL_IDS.map(id=>{
+    const checked = skills[id]!==undefined;
+    const val = checked ? skills[id] : 0.10;
+    return `<div class="skill-item"><label><input type="checkbox" id="sk_${id}" ${checked?'checked':''} onchange="document.getElementById('sv_${id}').disabled=!this.checked"> ${SKILL_LABELS[id]}</label>`+
+      `<input type="number" id="sv_${id}" value="${val}" step="0.01" min="0" max="1" ${checked?'':'disabled'}></div>`;
+  }).join('') + '</div>';
+}
+
+function toggleShopFields(type) {
+  const wrap = document.getElementById('shop_id_field');
+  const label = type==='special'?'商品ID':'基础ID';
+  const key = type==='special'?'id':'base_id';
+  wrap.innerHTML = `<div class="form-group"><label>${label}</label><input type="text" id="f_${key}"><div class="form-error" id="err_${key}"></div></div>`;
+}
+
+function submitForm() {
+  const item = collectFormData();
+  if(!item) return;
+  const list = getList(currentTab);
+  const errors = validateItem(currentTab, item, editingIndex);
+  if(errors.length) {
+    for(const e of errors) {
+      const el = document.getElementById('err_'+e.field);
+      if(el) { el.textContent = e.msg; el.classList.add('show'); }
+      const inp = document.getElementById('f_'+e.field);
+      if(inp) inp.classList.add('error');
+    }
+    return;
+  }
+  if(editingIndex>=0) list[editingIndex] = item; else list.push(item);
+  setList(currentTab, list);
+  closeModal();
+  renderContent();
+  showStatus('保存成功','ok');
+}
+
+function collectFormData() {
+  const item = {};
+  const tab = currentTab;
+  const fields = {
+    fish_types: ['id','name','rarity','base_price','weight','desc'],
+    fish_prefixes: ['id','name','rarity','price_multiplier','weight','min_level','requires_gold_rod','requires_divine_rod'],
+    rod_bases: ['id','name','quality','exp_multiplier','rarity_bonus'],
+    rod_prefixes: ['id','name','multiplier','max_slots','min_level'],
+    bait_bases: ['id','name','quality','exp_multiplier','quality_bonus'],
+    bait_prefixes: ['id','name','multiplier','min_level','event_bonus'],
+    levels: ['level','name','exp_required'],
+    shop_items: ['_type'],
+    enchant_tickets: ['id','name','quality','discount','weight']
+  }[tab]||[];
+  for(const k of fields) {
+    const el = document.getElementById('f_'+k);
+    if(!el) continue;
+    if(el.type==='checkbox') item[k]=el.checked;
+    else if(k==='_type') item[k]=el.value;
+    else if(['base_price','weight','price_multiplier','min_level','max_slots','level','exp_required','price','quantity','discount'].includes(k)) {
+      const v = parseFloat(el.value);
+      item[k] = isNaN(v)?0:v;
+    } else if(['exp_multiplier','rarity_bonus','multiplier','quality_bonus','event_bonus'].includes(k)) {
+      const v = parseFloat(el.value);
+      item[k] = isNaN(v)?0:v;
+    } else item[k] = el.value.trim();
+  }
+  // 特殊处理 shop_items 的 id/base_id
+  if(tab==='shop_items') {
+    const stype = item._type||'rods';
+    const keyEl = document.getElementById('f_'+(stype==='special'?'id':'base_id'));
+    if(keyEl) item[stype==='special'?'id':'base_id'] = keyEl.value.trim();
+  }
+  // skills
+  if(tab==='rod_prefixes') {
+    const skills = {};
+    for(const id of SKILL_IDS) {
+      const cb = document.getElementById('sk_'+id);
+      if(cb && cb.checked) {
+        const v = parseFloat(document.getElementById('sv_'+id).value);
+        skills[id] = isNaN(v)?0.10:v;
+      }
+    }
+    if(Object.keys(skills).length) item.skills = skills;
+  }
+  // 清理空值
+  for(const k of Object.keys(item)) {
+    if(item[k]==='' || item[k]===undefined || item[k]===null) delete item[k];
+    if(typeof item[k]==='number' && (k==='min_level'||k==='quantity'||k==='event_bonus') && item[k]===0) delete item[k];
+  }
+  return item;
+}
+
+function validateItem(tab, item, editIdx) {
+  const errors = [];
+  const list = getList(tab);
+  const idField = tab==='shop_items' ? (item._type==='special'?'id':'base_id') : 'id';
+  const idVal = item[idField];
+  if(!idVal) errors.push({field:idField,msg:'ID 不能为空'});
+  else if(list.some((x,i)=>i!==editIdx && x[idField]===idVal)) errors.push({field:idField,msg:'ID 已存在'});
+  if(tab==='fish_types' && !item.name) errors.push({field:'name',msg:'名称不能为空'});
+  if(tab==='fish_prefixes' && !item.name) errors.push({field:'name',msg:'名称不能为空'});
+  if(tab==='rod_bases' && !item.name) errors.push({field:'name',msg:'名称不能为空'});
+  if(tab==='rod_prefixes' && !item.name) errors.push({field:'name',msg:'名称不能为空'});
+  if(tab==='bait_bases' && !item.name) errors.push({field:'name',msg:'名称不能为空'});
+  if(tab==='bait_prefixes' && !item.name) errors.push({field:'name',msg:'名称不能为空'});
+  if(tab==='levels' && !item.name) errors.push({field:'name',msg:'名称不能为空'});
+  if(tab==='shop_items' && item._type==='special' && !item.name) errors.push({field:'name',msg:'名称不能为空'});
+  if(tab==='enchant_tickets' && !item.name) errors.push({field:'name',msg:'名称不能为空'});
+  if(tab==='rod_prefixes' && (item.max_slots<0||item.max_slots>10)) errors.push({field:'max_slots',msg:'槽位数必须在 0~10 之间'});
+  return errors;
+}
+
+function deleteItem(index) {
+  if(!confirm('确定删除这条数据吗？')) return;
+  const list = getList(currentTab);
+  list.splice(index,1);
+  setList(currentTab,list);
+  renderContent();
+  showStatus('已删除','ok');
+}
+
+function showStatus(msg,type) {
+  const el = document.getElementById('exportStatus');
+  el.innerHTML = `<span class="status-badge status-${type}">${msg}</span>`;
+  setTimeout(()=>el.innerHTML='',2000);
+}
+
+// ==================== 导出 Python ====================
+function pyList(arr, indent) {
+  if(!arr||!arr.length) return '[]';
+  const pre = '    '.repeat(indent);
+  const inner = '    '.repeat(indent+1);
+  let s = '[\n';
+  for(const item of arr) {
+    s += inner + pyDict(item, indent+1) + ',\n';
+  }
+  s += pre + ']';
+  return s;
+}
+
+function pyDict(obj, indent) {
+  const pre = '    '.repeat(indent);
+  const keys = Object.keys(obj);
+  if(!keys.length) return '{}';
+  let s = '{';
+  const pairs = [];
+  for(const k of keys) {
+    const v = obj[k];
+    if(v===undefined||v===null) continue;
+    let vs;
+    if(typeof v==='string') vs = JSON.stringify(v);
+    else if(typeof v==='boolean') vs = v?'True':'False';
+    else if(typeof v==='number') {
+      vs = Number.isInteger(v)?String(v):v.toFixed(4).replace(/\.?0+$/,'');
+    } else if(Array.isArray(v)) vs = pyList(v, indent);
+    else if(typeof v==='object') vs = pyDict(v, indent+1);
+    else vs = JSON.stringify(v);
+    pairs.push(`${JSON.stringify(k)}: ${vs}`);
+  }
+  if(pairs.length<=3 && pairs.every(p=>p.length<40)) {
+    s += pairs.join(', ') + '}';
+  } else {
+    const inner = '    '.repeat(indent+1);
+    s = '{\n' + pairs.map(p=>inner+p).join(',\n') + '\n' + pre + '}';
+  }
+  return s;
+}
+
+function pyVal(v, indent) {
+  if(typeof v==='string') return JSON.stringify(v);
+  if(typeof v==='boolean') return v?'True':'False';
+  if(typeof v==='number') return Number.isInteger(v)?String(v):v.toFixed(4).replace(/\.?0+$/,'');
+  if(Array.isArray(v)) return pyList(v, indent);
+  if(typeof v==='object') return pyDict(v, indent);
+  return JSON.stringify(v);
+}
+
+function exportPython() {
+  let code = `\"\"\"钓鱼游戏数据定义\"\"\"\n\n`;
+  code += `# 鱼类后缀（真实存在的鱼 + 神话鱼类）\nFISH_TYPES = ${pyList(data.FISH_TYPES, 0)}\n\n`;
+  code += `# 鱼名前缀\nFISH_PREFIXES = ${pyList(data.FISH_PREFIXES, 0)}\n\n`;
+  code += `# 钓竿基础类型\nROD_BASES = ${pyList(data.ROD_BASES, 0)}\n\n`;
+  code += `# 钓竿前缀\nROD_PREFIXES = ${pyList(data.ROD_PREFIXES, 0)}\n\n`;
+  code += `# 鱼饵基础类型\nBAIT_BASES = ${pyList(data.BAIT_BASES, 0)}\n\n`;
+  code += `# 鱼饵前缀\nBAIT_PREFIXES = ${pyList(data.BAIT_PREFIXES, 0)}\n\n`;
+  code += `# 等级配置\nLEVELS = ${pyList(data.LEVELS, 0)}\n\n`;
+  code += `# 商店商品定义（用于随机生成）\nSHOP_ITEMS = ${pyDict(data.SHOP_ITEMS, 0)}\n\n`;
+  code += `# 附魔券\nENCHANT_TICKETS = ${pyList(data.ENCHANT_TICKETS, 0)}\n\n`;
+  code += `# 赠送限制\nGIVE_LIMITS = ${pyDict(data.GIVE_LIMITS, 0)}\n\n`;
+  code += `# 拍卖行配置\nAUCTION_CONFIG = ${pyDict(data.AUCTION_CONFIG, 0)}\n\n`;
+  code += `# 附魔配置\nENCHANT_CONFIG = ${pyDict(data.ENCHANT_CONFIG, 0)}\n\n`;
+  code += `def get_fish_by_id(fish_id: str) -> dict:\n    for fish in FISH_TYPES:\n        if fish["id"] == fish_id:\n            return fish\n    return None\n\n`;
+  code += `def get_prefix_by_id(prefix_id: str) -> dict:\n    for prefix in FISH_PREFIXES:\n        if prefix["id"] == prefix_id:\n            return prefix\n    return None\n\n`;
+  code += `def get_rod_by_id(rod_id: str) -> dict:\n    for rod in ROD_BASES:\n        if rod["id"] == rod_id:\n            return rod\n    return None\n\n`;
+  code += `def get_bait_by_id(bait_id: str) -> dict:\n    for bait in BAIT_BASES:\n        if bait["id"] == bait_id:\n            return bait\n    return None\n\n`;
+  code += `def get_level_info(level: int) -> dict:\n    for lvl in LEVELS:\n        if lvl["level"] == level:\n            return lvl\n    return LEVELS[-1]\n\n`;
+  code += `from typing import Optional\n\ndef get_next_level_exp(level: int) -> Optional[int]:\n    for lvl in LEVELS:\n        if lvl["level"] == level + 1:\n            return lvl["exp_required"]\n    return None\n\n`;
+  code += `def get_rod_prefix(prefix_id: str) -> dict:\n    if not prefix_id:\n        return {"id": "", "name": "", "multiplier": 1.0, "max_slots": 0, "skills": {}}\n    for p in ROD_PREFIXES:\n        if p["id"] == prefix_id:\n            return p\n    return ROD_PREFIXES[2]\n\n`;
+  code += `def get_bait_prefix(prefix_id: str) -> dict:\n    for p in BAIT_PREFIXES:\n        if p["id"] == prefix_id:\n            return p\n    return BAIT_PREFIXES[1]\n\n`;
+  code += `def get_rod_shop_price(base_id: str) -> int:\n    for rod in SHOP_ITEMS.get("rods", []):\n        if rod["base_id"] == base_id:\n            return rod["price"]\n    return 0\n\n`;
+  code += `def get_bait_shop_price(base_id: str) -> int:\n    for bait in SHOP_ITEMS.get("baits", []):\n        if bait["base_id"] == base_id:\n            return bait["price"]\n    return 0\n\n`;
+  code += `def calc_rod_value(base_id: str, prefix_id: str, skills: dict = None) -> int:\n    rod_shop = get_rod_shop_price(base_id)\n    prefix = get_rod_prefix(prefix_id)\n    shop_price = int(rod_shop * prefix["multiplier"])\n    if shop_price <= 0:\n        shop_price = 50\n    multiplier = 1.0\n    effective_skills = dict(prefix.get("skills", {}))\n    if skills is not None:\n        effective_skills.update(skills)\n    for val in effective_skills.values():\n        multiplier *= (1 + val)\n    return int(shop_price * multiplier)\n\n`;
+  code += `def calc_bait_value(base_id: str, prefix_id: str, count: int) -> int:\n    bait_shop = get_bait_shop_price(base_id)\n    prefix = get_bait_prefix(prefix_id)\n    unit_price = int(bait_shop * prefix["multiplier"])\n    return unit_price * count\n\n`;
+  code += `def calc_fish_value(fish_id: str, prefix_id: str, count: int) -> int:\n    fish = get_fish_by_id(fish_id)\n    prefix = get_prefix_by_id(prefix_id)\n    if not fish or not prefix:\n        return 0\n    price = int(fish["base_price"] * prefix["price_multiplier"])\n    if prefix_id == "pref_014":\n        price = int(price * 1.2)\n    return price * count\n\n`;
+  code += `ROD_SKILL_DESCRIPTIONS = {\n    "swift": "⚡迅捷",\n    "lucky": "🍀幸运",\n    "harvest": "🌾丰收",\n    "treasure": "💎寻宝",\n    "tide": "🌊潮汐",\n    "exp_boost": "✨神慧",\n    "voyage": "🧭远航",\n    "mending": "🔧经验修补",\n    "greedy": "💰贪婪",\n    "cursed": "👻诅咒",\n    "fail_chance": "💥失误",\n    "coin_reduce": "📉清贫",\n    "lucky_block": "🎲幸运方块",\n}`;
+
+code += `\n\ndef scramble_text(text: str, intensity: float) -> str:\n    import random\n    if not text or intensity <= 0:\n        return text\n    chars = list(text)\n    unicode_pool = (\n        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"\n        "αβγδεζηθικλμνξοπρστυφχψω"\n        "∀∂∃∅∇∈∉∋∏∑−∕∗∙√∞∟∩∪"\n        "☀☁☂☃★☆☇☈☉☊☋☌☍☎☏"\n        "♀♂♠♣♥♦♪♫♬♭♮♯"\n        "✁✂✃✄✆✇✈✉✌✍✎✏"\n        "←↑→↓↔↕↖↗↘↙"\n        "ⓐⓑⓒⓓⓔⓕⓖⓗⓘⓙ"\n        "▁▂▃▄▅▆▇█"\n        "░▒▓"\n    )\n    max_replace = max(1, int(len(chars) * 0.30))\n    actual_replace = max(1, int(max_replace * min(intensity, 1.0)))\n    indices = random.sample(range(len(chars)), min(actual_replace, len(chars)))\n    for idx in indices:\n        if chars[idx].strip():\n            chars[idx] = random.choice(unicode_pool)\n    return "".join(chars)\n\n\ndef add_pig_noise(text: str, chance: float = 0.3) -> str:\n    import random\n    if not text:\n        return text\n    noises = ["哼", "🐷", "呼噜", "🐽", "哼哼"]\n    chars = list(text)\n    insert_count = max(1, int(len(chars) * chance * 0.1))\n    for _ in range(insert_count):\n        pos = random.randint(0, len(chars))\n        noise = random.choice(noises)\n        chars.insert(pos, noise)\n    return "".join(chars)\n`;
+
+  const blob = new Blob([code], {type: 'text/x-python;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'fish_data.py';
+  a.click();
+  URL.revokeObjectURL(url);
+  showStatus('已导出 fish_data.py','ok');
+}
+
+// 启动
+init();
+</script>
+</body>
+</html>
