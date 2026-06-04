@@ -27,6 +27,31 @@ FISH_TYPES = [
     {"id": "fish_018", "name": "利维坦", "rarity": "mythic", "base_price": 3000, "weight": 0.05,
      "desc": "深海中的巨兽，圣经中记载的海怪"},
     {"id": "fish_019", "name": "九尾龟", "rarity": "mythic", "base_price": 2500, "weight": 0.08},
+    # ========== 软体/甲壳/虾蟹类新增 ==========
+    # 常见类 (common) - 价格 3~20，权重 25~40
+    {"id": "fish_020", "name": "河虾", "rarity": "common", "base_price": 6, "weight": 35},
+    {"id": "fish_021", "name": "小螃蟹", "rarity": "common", "base_price": 10, "weight": 25},
+    {"id": "fish_022", "name": "河蚌", "rarity": "common", "base_price": 4, "weight": 40},
+    {"id": "fish_023", "name": "小章鱼", "rarity": "common", "base_price": 18, "weight": 15},
+    # 稀有类 (rare) - 价格 40~90，权重 3~7
+    {"id": "fish_024", "name": "章鱼", "rarity": "rare", "base_price": 55, "weight": 4},
+    {"id": "fish_025", "name": "鱿鱼", "rarity": "rare", "base_price": 45, "weight": 5},
+    {"id": "fish_026", "name": "皮皮虾", "rarity": "rare", "base_price": 65, "weight": 4},
+    {"id": "fish_027", "name": "大闸蟹", "rarity": "rare", "base_price": 85, "weight": 6},
+    {"id": "fish_028", "name": "海星", "rarity": "rare", "base_price": 40, "weight": 7},
+    {"id": "fish_029", "name": "墨鱼", "rarity": "rare", "base_price": 75, "weight": 3},
+    # 传说类 (legendary) - 价格 300~500，权重 0.2~0.6
+    {"id": "fish_030", "name": "澳洲龙虾", "rarity": "legendary", "base_price": 400, "weight": 0.4},
+    {"id": "fish_031", "name": "帝王蟹", "rarity": "legendary", "base_price": 350, "weight": 0.6},
+    {"id": "fish_032", "name": "大王乌贼", "rarity": "legendary", "base_price": 450, "weight": 0.2},
+    {"id": "fish_033", "name": "蓝龙虾", "rarity": "legendary", "base_price": 480, "weight": 0.3},
+    # 神话类 (mythic) - 价格 1200~3500，权重 0.03~0.15
+    {"id": "fish_034", "name": "巨型章鱼", "rarity": "mythic", "base_price": 1500, "weight": 0.1,
+     "desc": "触手长达数十米的深海怪物，能轻易缠绕整艘渔船"},
+    {"id": "fish_035", "name": "深海巨蟹", "rarity": "mythic", "base_price": 2200, "weight": 0.07,
+     "desc": "生活在海底火山口的庞然大物，甲壳如钢铁般坚硬"},
+    {"id": "fish_036", "name": "北海巨妖", "rarity": "mythic", "base_price": 3200, "weight": 0.03,
+     "desc": "北欧神话中的克拉肯，沉睡时会被误认为是一座小岛"},
 ]
 
 # 鱼名前缀
