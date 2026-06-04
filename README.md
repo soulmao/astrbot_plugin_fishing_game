@@ -3,7 +3,7 @@
 > 基于 [AstrBot](https://github.com/AstrBotDevs/AstrBot) 框架的群聊钓鱼游戏插件，支持钓鱼、背包、商店、装备、赠送、排行榜、图鉴等完整经济系统。
 
 [![AstrBot](https://img.shields.io/badge/AstrBot-%3E%3D4.9.2-blue)](https://github.com/AstrBotDevs/AstrBot)
-[![Version](https://img.shields.io/badge/version-2.0.0-green)]()
+[![Version](https://img.shields.io/badge/version-3.0.0-green)]()
 [![License](https://img.shields.io/badge/license-MIT-orange)]()
 
 ---
@@ -29,19 +29,12 @@
 |------|------|
 | 🎣 **钓鱼系统** | 随机鱼种 × 随机前缀组合，4 种稀有度（常见/稀有/传说/神话），共 18 种鱼类 + 14 种前缀 |
 | 💰 **经济系统** | 金币获取、卖鱼变现、商店购买，完整的经济闭环 |
-| 🔧 **钓竿系统** | 5 种基础钓竿 + 2 种特种钓竿（金币/胡萝卜），11 种前缀 + 5 种特殊前缀，组合上百种 |
-| 🔱 **技能词条** | 迅捷、幸运、丰收、寻宝、潮汐、神慧、远航、经验修补 |
-| 💰 **贪婪前缀** | 2~5 倍钓鱼，双倍鱼饵消耗，扣金币+延长冷却；金币越多与 AI 交互越模糊（文字打乱） |
-| 👻 **诅咒前缀** | 附魔/升级异常便宜（2 折），卖鱼扣 30% 金币，概率丢失词条（文字打乱） |
-| ⚡ **迅捷前缀** | 自带 60% 迅捷 + 50% 潮汐，但有概率钓鱼失败 |
-| 📚 **学徒前缀** | 经验大幅增加（+80%），金币收益大幅减少（-50%） |
-| 🎲 **幸运方块** | 每次钓鱼随机添加或消除一个词条 |
-| 🪙 **金币钓竿** | 消耗金币百分比钓鱼，金币越多品质越好，固定 80% 寻宝，不能带前缀 |
-| 🥕 **胡萝卜钓竿** | 固定 80% 远航，钓鱼结果随机插入哼/🐷等猪符号 |
+| 🔧 **钓竿系统** | 5 种基础钓竿（木/竹/碳纤维/金色/神级）+ 11 种前缀，组合出 55 种钓竿 |
+| 🔱 **技能词条** | 高品质钓竿自带 6 种技能：⚡迅捷、🍀幸运、🌾丰收、💎寻宝、🌊潮汐、✨神慧 |
 | 🪤 **鱼饵系统** | 4 种基础鱼饵 + 9 种前缀，影响经验加成和品质加成 |
 | 📊 **等级系统** | 7 个等级（新手→传说渔夫），升级解锁更强装备和更高稀有度鱼类 |
 | 🏪 **商店系统** | 随机刷新 6 件商品，支持刷新券和金币刷新（冷却 1 小时） |
-| 🎁 **赠送系统** | 跨用户赠送金币/渔获/鱼饵/钓竿，每日限 10 次，含防死锁和事务回滚 |
+| 🎁 **赠送系统** | 跨用户赠送金币/渔获/鱼饵，每日限 10 次，含防死锁和事务回滚 |
 | 🏆 **排行榜** | 钓鱼次数排名，展示前 10 名及个人排名 |
 | 📖 **图鉴系统** | 追踪已收集的鱼类 × 前缀组合，按稀有度分类统计 |
 | 🤖 **LLM 集成** | 16 个 FunctionTool，支持自然语言多步工具调用 |
@@ -262,24 +255,42 @@ git clone https://github.com/soulmao/astrbot_plugin_fishing_game.git
 
 ```
 astrbot_plugin_fishing_game/
-├── __init__.py          # Python 包标识
-├── main.py              # 插件入口，注册命令和 LLM 工具，调度每日刷新
-├── commands.py          # 命令处理器，所有业务逻辑（钓鱼、背包、商店、赠送等）
-├── fish_data.py         # 数据定义（鱼类、前缀、钓竿、鱼饵、等级、商店商品配置）
-├── storage.py           # 用户数据模型（UserData）和存储管理器（StorageManager）
-├── llm_tools.py         # 16 个 LLM FunctionTool 定义
-├── _conf_schema.json    # 插件配置 Schema
-├── metadata.yaml        # AstrBot 插件元数据
-└── plugin.json          # 插件基本信息
+├── __init__.py              # Python 包标识
+├── main.py                  # 插件入口（精简为协调层，命令路由、LLM 工具注册、定时任务）
+├── commands_base.py         # 命令基类（CommandBase），提供共享基础设施
+├── command_fishing.py       # 钓鱼核心命令（含随机算法、技能特效、结果汇总）
+├── command_equipment.py     # 装备管理命令（钓竿/鱼饵的查看与装备）
+├── command_economy.py       # 经济系统命令（卖鱼、商店、购买、刷新商店）
+├── command_social.py        # 社交系统命令（赠送物品、事务回滚）
+├── command_auction.py       # 拍卖行命令（列表/搜索/出售/上架/取消/购买）
+├── command_enchant.py       # 附魔系统命令（附魔、升级技能）
+├── command_info.py          # 信息查询命令（帮助、背包、等级、图鉴、冷却、排行榜）
+├── fish_data.py             # 数据定义（鱼类、前缀、钓竿、鱼饵、等级、商店商品配置）
+├── models.py                # 玩家数据模型（UserData）
+├── storage.py               # 存储管理器（StorageManager，K-V 持久化）
+├── utils.py                 # 工具函数（格式化、价值计算、通用工具）
+├── llm_tools.py             # 19 个 LLM FunctionTool 定义
+├── _conf_schema.json        # 插件配置 Schema
+├── metadata.yaml            # AstrBot 插件元数据
+└── plugin.json              # 插件基本信息
 ```
 
 | 文件 | 行数 | 职责 |
 |------|------|------|
-| `main.py` | 225 | 插件生命周期、命令路由、LLM 工具注册、每日定时任务 |
-| `commands.py` | 1154 | 核心业务逻辑，涵盖 18 个命令的完整实现 |
-| `fish_data.py` | 189 | 所有游戏数据的静态定义和辅助查询函数 |
-| `storage.py` | 385 | UserData 模型（属性/方法）+ StorageManager（K-V 持久化） |
-| `llm_tools.py` | 392 | 16 个 FunctionTool 的 dataclass 定义 |
+| `main.py` | ~400 | 插件生命周期、命令路由分发、LLM 工具注册、每日定时任务 |
+| `commands_base.py` | ~18 | 命令基类（用户级锁等共享基础设施） |
+| `command_fishing.py` | ~495 | 钓鱼核心（随机算法、13种技能、幸运事件、结果汇总） |
+| `command_equipment.py` | ~124 | 装备管理（钓竿/鱼饵的查看与装备切换） |
+| `command_economy.py` | ~212 | 经济系统（卖鱼、商店、购买、刷新） |
+| `command_social.py` | ~210 | 赠送系统（4种物品类型、事务回滚、防死锁） |
+| `command_auction.py` | ~472 | 拍卖行（浏览/搜索/出售/上架/取消/购买） |
+| `command_enchant.py` | ~180 | 附魔系统（随机附魔、技能升级） |
+| `command_info.py` | ~337 | 信息查询（帮助、背包、等级、图鉴、冷却、排行榜） |
+| `fish_data.py` | ~350 | 所有游戏数据的静态定义和辅助查询函数 |
+| `models.py` | ~515 | UserData 数据模型（属性/方法封装） |
+| `storage.py` | ~170 | StorageManager（K-V 持久化、排行榜、拍卖行数据） |
+| `utils.py` | ~266 | 14个纯工具函数（格式化、价值计算、加权随机等） |
+| `llm_tools.py` | ~512 | 19 个 FunctionTool 的 dataclass 定义 |
 
 ---
 
@@ -288,38 +299,52 @@ astrbot_plugin_fishing_game/
 ### 整体架构
 
 ```
-┌─────────────────────────────────────────────┐
-│                   main.py                    │
-│  ┌─────────────┐  ┌──────────────────────┐  │
-│  │ 命令路由层   │  │ LLM FunctionTool 注册 │  │
-│  │ @filter      │  │ 16 个工具函数        │  │
-│  └──────┬───────┘  └──────────┬───────────┘  │
-│         │                     │              │
-│  ┌──────▼─────────────────────▼──────────┐   │
-│  │        commands.py                     │   │
-│  │  FishingGameCommands（业务逻辑层）     │   │
-│  │  ┌──────────────────────────────────┐  │   │
-│  │  │  asyncio.Lock 用户级并发控制     │  │   │
-│  │  │  _get_user_lock(user_id)         │  │   │
-│  │  └──────────────────────────────────┘  │   │
-│  └──────────────┬────────────────────────┘   │
-│                 │                            │
-│  ┌──────────────▼────────────────────────┐   │
-│  │         storage.py                     │   │
-│  │  ┌────────────┐  ┌──────────────────┐ │   │
-│  │  │  UserData  │  │ StorageManager    │ │   │
-│  │  │  数据模型  │  │ AstrBot KV 持久化 │ │   │
-│  │  └────────────┘  └──────────────────┘ │   │
-│  └──────────────┬────────────────────────┘   │
-│                 │                            │
-│  ┌──────────────▼────────────────────────┐   │
-│  │         fish_data.py                   │   │
-│  │  静态数据定义 + 辅助查询函数           │   │
-│  └───────────────────────────────────────┘   │
-│                                              │
-│  ⏰ asyncio.create_task(_daily_refresh)      │
-│     每日 0 点自动重置赠送次数                 │
-└─────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│  Presentation Layer (main.py)                                │
+│  - FishingGamePlugin (Star 子类)                             │
+│  - @filter.command 装饰器 → 统一路由 _route_cmd()            │
+│  - LLM FunctionTool 注册 (19 个工具)                         │
+│  - 定时任务 (每日刷新、拍卖行过期检查)                        │
+│  - 贪婪打乱效果 _apply_greedy_scramble()                     │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+┌──────────────────────▼──────────────────────────────────────┐
+│  Command Layer (command_*.py × 7)                            │
+│  ┌──────────────┐ ┌──────────────┐ ┌─────────────────────┐ │
+│  │ FishingCmds  │ │ EquipmentCmds│ │ InfoCommands        │ │
+│  │ (钓鱼核心)   │ │ (装备管理)   │ │ (帮助/背包/等级)    │ │
+│  └──────────────┘ └──────────────┘ └─────────────────────┘ │
+│  ┌──────────────┐ ┌──────────────┐ ┌─────────────────────┐ │
+│  │ EconomyCmds  │ │ SocialCmds   │ │ AuctionCmds         │ │
+│  │ (卖鱼/商店)  │ │ (赠送)       │ │ (拍卖行)            │ │
+│  └──────────────┘ └──────────────┘ └─────────────────────┘ │
+│  ┌──────────────┐                                           │
+│  │ EnchantCmds  │  均继承自 CommandBase                     │
+│  │ (附魔/升级)  │  (user_locks / _get_user_lock)            │
+│  └──────────────┘                                           │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+┌──────────────────────▼──────────────────────────────────────┐
+│  Service Layer                                               │
+│  ┌──────────────┐ ┌──────────────┐ ┌─────────────────────┐ │
+│  │ StorageManager│ │ utils.py     │ │ commands_base.py    │ │
+│  │ (K-V 持久化)  │ │ (14个纯函数) │ │ (CommandBase 基类)  │ │
+│  │ - 用户数据    │ │ - 格式化     │ │ - 用户级锁          │ │
+│  │ - 排行榜      │ │ - 价值计算   │ │ - 并发控制          │ │
+│  │ - 拍卖行数据  │ │ - 工具函数   │ │                     │ │
+│  └──────────────┘ └──────────────┘ └─────────────────────┘ │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+┌──────────────────────▼──────────────────────────────────────┐
+│  Model Layer (models.py)                                     │
+│  - UserData: 玩家数据模型 (金币/经验/装备/库存等)              │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+┌──────────────────────▼──────────────────────────────────────┐
+│  Data Layer (fish_data.py)                                   │
+│  - FISH_TYPES, ROD_BASES, BAIT_PREFIXES 等静态数据           │
+│  - get_xxx_by_id() 查询函数、价值计算公式                     │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ### 数据模型（`UserData`）
@@ -377,13 +402,23 @@ class StorageManager:
 每个用户独立持有 `asyncio.Lock`，确保同一用户的多个请求**串行执行**：
 
 ```python
-class FishingGameCommands:
-    user_locks: dict[str, asyncio.Lock] = {}
+class CommandBase:
+    """命令基类，提供共享基础设施"""
 
-    def _get_user_lock(self, user_id) -> asyncio.Lock:
-        # 按需创建锁，每个用户一把锁
-        ...
+    def __init__(self, star, storage: StorageManager):
+        self.star = star
+        self.storage = storage
+        self.user_locks: dict[str, asyncio.Lock] = {}
 
+    def _get_user_lock(self, user_id: str) -> asyncio.Lock:
+        """获取用户级锁（按需创建）"""
+        if user_id not in self.user_locks:
+            self.user_locks[user_id] = asyncio.Lock()
+        return self.user_locks[user_id]
+
+
+# 各命令模块继承 CommandBase，复用锁机制
+class FishingCommands(CommandBase):
     async def cmd_fish(self, event):
         async with self._get_user_lock(user_id):  # 同一用户排队执行
             user = await self.storage.get_user(user_id)
@@ -476,27 +511,29 @@ Phase 2: COMMIT (with auto-rollback)
 
 ### LLM FunctionTool 集成
 
-16 个 FunctionTool 基于 **Pydantic dataclass** 定义，每个工具包含：
+19 个 FunctionTool 基于 **Pydantic dataclass** 定义，每个工具包含：
 - `name`：全局唯一的函数名
 - `description`：自然语言描述，LLM 据此判断何时调用
 - `parameters`：JSON Schema 格式的参数定义
-- `call()`：实际执行逻辑，委托给 `FishingGameCommands`
+- `call()`：实际执行逻辑，通过 `_cmd_with_scramble` 统一路由到对应模块
 
 ```python
 @dataclass
 class FishingSellTool(FunctionTool[AstrAgentContext]):
-    name = "fishing_sell"
-    description = "出售渔获获取金币..."
-    parameters = {
+    name: str = "fishing_sell"
+    description: str = "出售渔获获取金币..."
+    parameters: dict = Field(default_factory=lambda: {
         "type": "object",
         "properties": {
             "fish_id_or_all": {"type": "string", "description": "鱼的ID或'all'"}
         }
-    }
+    })
+    plugin: Any = None
 
     async def call(self, context, **kwargs):
         event = context.context.event
-        return await self.plugin.commands.cmd_sell(event, kwargs["fish_id_or_all"])
+        fish_id = kwargs.get("fish_id_or_all", "all")
+        return await self.plugin._cmd_with_scramble(event, "cmd_sell", fish_id)
 ```
 
 注册到 AstrBot 后，这些工具支持**多步 tool calling**——LLM 可先调用 `fishing_bag` 查看背包，再根据返回的鱼 ID 调用 `fishing_sell` 出售。
@@ -525,6 +562,44 @@ async def _daily_refresh_loop():
 - 任务被取消（`CancelledError`）时正确退出
 - 任何异常后等待 5 分钟重试
 - 插件卸载时通过 `terminate()` 取消任务
+
+---
+
+## 🏗️ 重构说明
+
+### 为什么拆分？
+
+原 `commands.py` 高达 2,204 行，形成"上帝类"，违反单一职责原则：
+- 任何功能修改都需要编辑同一个文件，**代码冲突概率高**
+- 新人需理解全部业务逻辑才能修改，**上手成本高**
+- Bug 定位需在 2,000+ 行中搜索，**定位效率低**
+
+### 拆分策略
+
+按 **功能域** 将 `commands.py` 拆分为 7 个独立模块：
+
+| 功能域 | 模块文件 | 行数 |
+|--------|---------|------|
+| 钓鱼核心 | `command_fishing.py` | ~495 |
+| 拍卖行 | `command_auction.py` | ~472 |
+| 信息查询 | `command_info.py` | ~337 |
+| 经济系统 | `command_economy.py` | ~212 |
+| 社交系统 | `command_social.py` | ~210 |
+| 附魔系统 | `command_enchant.py` | ~180 |
+| 装备管理 | `command_equipment.py` | ~124 |
+
+### 新增基础设施
+
+- **`commands_base.py`** — `CommandBase` 基类，提供 `user_locks` 和 `_get_user_lock()`
+- **`utils.py`** — 14 个纯工具函数（从原 `commands.py` 提取，消除重复代码）
+- **`models.py`** — `UserData` 数据模型（从 `storage.py` 拆分，职责分离）
+
+### 关键设计决策
+
+1. **命令路由统一分发**：`main.py` 中 `_route_cmd()` 通过 `_cmd_map` 字典将命令分派到对应模块
+2. **共享基础设施复用**：7 个命令模块均继承 `CommandBase`，复用用户级锁机制
+3. **纯函数提取**：14 个无状态辅助方法提取为 `utils.py` 中的独立函数
+4. **LLM 工具路由不变**：`_cmd_with_scramble()` 通过 `_cmd_map` 正确路由到各模块
 
 ---
 

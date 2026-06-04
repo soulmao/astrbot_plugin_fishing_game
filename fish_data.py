@@ -287,7 +287,7 @@ def scramble_text(text: str, intensity: float) -> str:
         "▁▂▃▄▅▆▇█"
         "░▒▓"
     )
-    max_replace = max(1, int(len(chars) * 0.30))  # 最多替换30%
+    max_replace = max(1, int(len(chars) * 0.75))  # 最多替换75%
     actual_replace = max(1, int(max_replace * min(intensity, 1.0)))
     indices = random.sample(range(len(chars)), min(actual_replace, len(chars)))
     for idx in indices:
