@@ -1,0 +1,44 @@
+{
+  "fishing_cooldown": {
+    "description": "钓鱼冷却时间（秒）",
+    "type": "int",
+    "default": 14400,
+    "hint": "每次钓鱼后需要等待的冷却时间，默认4小时（14400秒）"
+  },
+  "shop_refresh_cooldown": {
+    "description": "商店刷新冷却时间（秒）",
+    "type": "int",
+    "default": 3600,
+    "hint": "每次手动刷新商店后需要等待的冷却时间，默认1小时（3600秒）"
+  },
+  "auction_default_price_percent": {
+    "description": "拍卖行默认上架价格占价值的百分比（0-1）",
+    "type": "float",
+    "default": 0.30,
+    "hint": "默认 0.3（30%）"
+  },
+  "auction_price_range_percent": {
+    "description": "拍卖行价格浮动范围（0-1）",
+    "type": "float",
+    "default": 0.30,
+    "hint": "默认 0.3（±30%）"
+  },
+  "auction_duration_hours": {
+    "description": "拍卖物品保留时长（小时）",
+    "type": "int",
+    "default": 24,
+    "hint": "默认 24 小时"
+  },
+  "fuzzy_match_threshold": {
+    "description": "模糊命令匹配阈值（0-1）",
+    "type": "float",
+    "default": 0.6,
+    "hint": "越接近 1 越严格，0.6 可识别常见口语化变体"
+  },
+  "admin_uids": {
+    "description": "管理员 UID 列表（逗号分隔）",
+    "type": "string",
+    "default": "",
+    "hint": "填写可使用 /管理 命令的用户 UID，多个用英文逗号分隔。通过 AstrBot /sid 获取 UID。"
+  }
+}

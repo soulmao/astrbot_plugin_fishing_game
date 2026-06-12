@@ -1,0 +1,6 @@
+name: fishing_game
+desc: 钓鱼游戏插件 - 群聊娱乐插件，支持钓鱼、背包、商店、赠送等完整经济系统
+version: V4.0.0
+author: AstrBot
+display_name: "钓鱼游戏"
+astrbot_version: ">=4.9.2"
