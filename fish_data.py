@@ -211,7 +211,7 @@ ENCHANT_CONFIG = {
 
 # 定向附魔券配置
 DIRECTED_ENCHANT_CONFIG = {
-    "base_prices": {0.05: 100, 0.10: 200, 0.15: 300},
+    "base_prices": {0.05: 500, 0.10: 1000, 0.15: 1500},
     "exp_factor_divisor": 10000,     # 价格 = base * (1 + exp / divisor)
 }
 

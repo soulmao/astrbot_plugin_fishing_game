@@ -68,8 +68,8 @@ class ItemAuctionTests(unittest.TestCase):
         self.assertEqual(calc_item_value("refresh_token", 3), 90)
 
     def test_directed_enchant_value(self):
-        self.assertEqual(calc_item_value("directed_enchant_swift_10", 2), 400)
-        self.assertEqual(calc_item_value("directed_enchant_lucky_15", 1), 300)
+        self.assertEqual(calc_item_value("directed_enchant_swift_10", 2), 2000)
+        self.assertEqual(calc_item_value("directed_enchant_lucky_15", 1), 1500)
 
     def test_unknown_item_value(self):
         self.assertEqual(calc_item_value("future_item", 5), 0)

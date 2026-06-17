@@ -11,7 +11,7 @@
 
 - **插件名**: `fishing_game`
 - **显示名称**: 钓鱼游戏
-- **版本**: `V4.1.0`（`metadata.yaml`、`plugin.json`、`main.py` 中 `@register` 已统一）
+- **版本**: `V4.2.0`（`metadata.yaml`、`plugin.json`、`main.py` 中 `@register` 已统一）
 - **作者**: AstrBot
 - **依赖框架**: AstrBot >= 4.9.2
 - **运行环境**: Python 3.9+

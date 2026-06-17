@@ -246,24 +246,31 @@ class EnchantCommands(CommandBase):
             rod = user.current_rod
             prefix = get_rod_prefix(rod["prefix_id"])
             max_slots = prefix.get("max_slots", 0)
-            current_skills = dict(rod.get("skills", {}) or {})
+            rod_skills = dict(rod.get("skills", {}) or {})
 
-            # 检查安全技能槽
-            if len(current_skills) >= max_slots and skill_id not in current_skills:
-                return "❌ 安全技能槽已满，无法使用定向附魔券\n💡 请先通过 /附魔 腾出槽位，或使用更高档位的券升级已有技能"
+            # 合并前缀自带技能与附魔技能，用于计算当前有效值
+            effective_skills = dict(prefix.get("skills", {}))
+            effective_skills.update(rod_skills)
 
-            # 检查当前技能值
-            current_val = current_skills.get(skill_id, 0)
-            if current_val >= ticket_value:
-                return f"❌ 当前 {skill_label} 已经是 {int(current_val*100)}%，不低于券的 {int(ticket_value*100)}% 档位"
+            # 检查安全技能槽（只统计附魔技能）
+            if len(rod_skills) >= max_slots and skill_id not in rod_skills:
+                return "❌ 安全技能槽已满，无法使用定向附魔券\n💡 请先通过 /附魔 腾出槽位，或升级已有技能"
+
+            # 检查当前技能值上限
+            current_val = effective_skills.get(skill_id, 0)
+            if current_val >= 1.0:
+                return f"❌ {skill_label} 已达到最高等级（100%）"
+
+            # 新技能值 = 当前值 + 券面值，最高不超过 100%
+            new_val = round(min(current_val + ticket_value, 1.0), 2)
 
             # 扣除券
             if not user.remove_item(ticket_item_id, 1):
                 return "❌ 定向附魔券扣除失败"
 
-            # 应用技能
-            new_skills = dict(current_skills)
-            new_skills[skill_id] = ticket_value
+            # 应用技能到附魔技能槽
+            new_skills = dict(rod_skills)
+            new_skills[skill_id] = new_val
             new_enchant_count = rod.get("enchant_count", 0) + 1
             user.update_rod_skills(rod["instance_id"], new_enchant_count, new_skills)
 
@@ -274,9 +281,11 @@ class EnchantCommands(CommandBase):
 
             rod_name = format_rod_name(rod)
             if current_val == 0:
-                action_msg = f"获得新技能 {skill_label}+{int(ticket_value*100)}%"
+                action_msg = f"获得新技能 {skill_label}+{int(new_val*100)}%"
             else:
-                action_msg = f"升级 {skill_label} {int(current_val*100)}% → {int(ticket_value*100)}%"
+                action_msg = f"升级 {skill_label} {int(current_val*100)}% +{int(ticket_value*100)}% → {int(new_val*100)}%"
+            if new_val >= 1.0:
+                action_msg += "（已达上限）"
             result = f"✨ 定向附魔成功！\n🎣 {rod_name}\n🎯 {action_msg}\n📈 累计附魔 {new_enchant_count} 次"
 
             for ach in new_achievements:

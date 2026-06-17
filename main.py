@@ -28,7 +28,7 @@ import asyncio
 import difflib
 
 
-@register("fishing_game", "AstrBot", "钓鱼游戏插件 - 群聊娱乐插件，支持钓鱼、背包、商店、赠送等完整经济系统", "V4.1.0")
+@register("fishing_game", "AstrBot", "钓鱼游戏插件 - 群聊娱乐插件，支持钓鱼、背包、商店、赠送等完整经济系统", "V4.2.0")
 class FishingGamePlugin(Star):
     def __init__(self, context: Context, config=None):
         super().__init__(context)

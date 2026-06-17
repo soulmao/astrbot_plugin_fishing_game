@@ -481,8 +481,9 @@ class FishingEnchantTool(FunctionTool[AstrAgentContext]):
     """钓竿附魔"""
     name: str = "fishing_enchant"
     description: str = (
-        "为指定编号的钓竿随机附魔技能，消耗金币或附魔券。"
-        "当用户说附魔、给钓竿加技能时调用。"
+        "为指定编号的钓竿随机附魔技能，消耗金币或普通附魔券（不是定向附魔券）。"
+        "当用户说普通附魔、随机附魔、给钓竿加技能但未指定具体技能和定向券时调用。"
+        "如果用户提到'定向附魔券'或'定向技能券'，请改用 fishing_directed_enchant。"
         "rod_index 可以通过 fishing_myrods 查看。"
     )
     parameters: dict = Field(default_factory=lambda: {
@@ -508,8 +509,9 @@ class FishingEnchantUpgradeTool(FunctionTool[AstrAgentContext]):
     """钓竿附魔升级"""
     name: str = "fishing_enchant_upgrade"
     description: str = (
-        "升级指定钓竿的指定技能，消耗金币。"
-        "当用户说升级技能、提升技能等级时调用。"
+        "使用金币升级指定钓竿的指定技能，每次固定增加少量百分比。"
+        "当用户说用金币升级技能、提升技能等级时调用。"
+        "如果用户提到'定向附魔券'或'定向技能券'，请改用 fishing_directed_enchant。"
     )
     parameters: dict = Field(default_factory=lambda: {
         "type": "object",
@@ -539,8 +541,9 @@ class FishingDirectedEnchantTool(FunctionTool[AstrAgentContext]):
     """定向附魔"""
     name: str = "fishing_directed_enchant"
     description: str = (
-        "使用背包中的定向附魔券为当前装备钓竿添加或升级指定技能。"
-        "当用户说要用定向附魔券、给钓竿加特定技能、指定附魔时调用。"
+        "使用背包中的定向附魔券（定向技能券）为当前装备钓竿添加或升级指定技能。"
+        "当用户说要用定向附魔券、定向技能券、给钓竿加特定技能、用券升级技能时调用。"
+        "效果：在当前技能百分比基础上累加券面百分比（如当前20% + 5%券 = 25%），最高100%。"
         "技能名支持中文: 迅捷/幸运/丰收/寻宝/潮汐/神慧/远航/经验修补"
     )
     parameters: dict = Field(default_factory=lambda: {
