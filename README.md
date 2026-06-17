@@ -3,7 +3,7 @@
 > 基于 [AstrBot](https://github.com/AstrBotDevs/AstrBot) 框架的群聊钓鱼游戏插件，支持钓鱼、背包、商店、装备、赠送、排行榜、图鉴等完整经济系统。
 
 [![AstrBot](https://img.shields.io/badge/AstrBot-%3E%3D4.9.2-blue)](https://github.com/AstrBotDevs/AstrBot)
-[![Version](https://img.shields.io/badge/version-1.0.0-green)]()
+[![Version](https://img.shields.io/badge/version-V4.1.0-green)]()
 [![License](https://img.shields.io/badge/license-MIT-orange)]()
 
 ---

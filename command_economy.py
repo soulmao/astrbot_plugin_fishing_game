@@ -163,16 +163,21 @@ class EconomyCommands(CommandBase):
                 base = get_rod_by_id(item["base_id"])
                 prefix = get_rod_prefix(item["prefix_id"])
                 name = f"{prefix['name']}{base['name']}"
+                received_quantity = 1
             elif item["type"] == "directed_enchant":
                 name = item["name"]
+                received_quantity = quantity
             elif item["type"] in SPECIAL_NAMES:
                 name = SPECIAL_NAMES[item["type"]]
+                received_quantity = quantity
             else:
                 base = get_bait_by_id(item["base_id"])
                 prefix = get_bait_prefix(item["prefix_id"])
                 name = f"{prefix['name']}{base['name']}"
+                # 商店中鱼饵以组为单位售卖，实际到账数量 = 每组数量 × 购买组数
+                received_quantity = item.get("quantity", 1) * quantity
             
-            return f"✅ 购买成功！\n\n获得: {name} x{quantity}\n花费: {total_price} 金币\n剩余: {user.coins} 金币"
+            return f"✅ 购买成功！\n\n获得: {name} x{received_quantity}\n花费: {total_price} 金币\n剩余: {user.coins} 金币"
     
     async def cmd_shop_refresh(self, event) -> str:
         """刷新商店命令"""

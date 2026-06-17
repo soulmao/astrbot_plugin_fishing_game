@@ -423,6 +423,8 @@ class FishingAuctionTool(FunctionTool[AstrAgentContext]):
         "当用户说'卖掉'、'直接出售'、'换成金币'时用action=sell；"
         "当用户说'上架'、'挂到拍卖行'、'放出去卖'时用action=listing。"
         "action=list浏览列表，action=search搜索关键词，action=buy购买，action=cancel取消自己的上架。"
+        "支持物品类型：rod(钓竿，用编号)、bait(鱼饵，用编号或base_id)、fish(渔获，用fish_id)、"
+        "ticket(附魔券，用ticket_id)、item(道具券，用道具ID如refresh_token或directed_enchant_swift_10)。"
         "【重要】出售/上架钓竿后，背包中的钓竿编号会重新排序。如果要连续操作多根钓竿，"
         "每次操作后请根据返回结果中的最新编号继续，或先调用fishing_bag重新查询。"
     )
@@ -435,11 +437,11 @@ class FishingAuctionTool(FunctionTool[AstrAgentContext]):
             },
             "keyword_or_id": {
                 "type": "string",
-                "description": "搜索关键词、上架/购买/取消的编号。action=list时可不传"
+                "description": "搜索关键词、上架/购买/取消的编号或ID。action=list时可不传。item类型需填道具ID，如refresh_token、directed_enchant_swift_10"
             },
             "item_type": {
                 "type": "string",
-                "description": "物品类型: rod(钓竿), bait(鱼饵), fish(渔获), ticket(附魔券)。上架/出售时需要"
+                "description": "物品类型: rod(钓竿), bait(鱼饵), fish(渔获), ticket(附魔券), item(道具券)。上架/出售时需要"
             },
             "price": {
                 "type": "number",

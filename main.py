@@ -28,7 +28,7 @@ import asyncio
 import difflib
 
 
-@register("fishing_game", "AstrBot", "钓鱼游戏插件 - 群聊娱乐插件，支持钓鱼、背包、商店、赠送等完整经济系统", "1.0.0")
+@register("fishing_game", "AstrBot", "钓鱼游戏插件 - 群聊娱乐插件，支持钓鱼、背包、商店、赠送等完整经济系统", "V4.1.0")
 class FishingGamePlugin(Star):
     def __init__(self, context: Context, config=None):
         super().__init__(context)
@@ -340,6 +340,8 @@ class FishingGamePlugin(Star):
                                     seller.add_fish(item_data["fish_id"], item_data["prefix_id"], item_data.get("count", 1))
                                 elif item_type == "ticket":
                                     seller.add_enchant_ticket(item_data["ticket_id"], item_data.get("count", 1))
+                                elif item_type == "item":
+                                    seller.add_item(item_data["item_id"], item_data.get("count", 1))
 
                                 notices = seller.get("auction_notices", [])
                                 notices.append(f"你上架的 {item_data.get('name', '物品')} 已过期退回")

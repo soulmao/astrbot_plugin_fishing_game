@@ -281,7 +281,28 @@ def get_item_name_for_auction(item_data: dict) -> str:
             if t["id"] == item_data.get("ticket_id", ""):
                 return t["name"]
         return "未知附魔券"
+    elif item_type == "item":
+        item_id = item_data.get("item_id", "")
+        if item_id == "refresh_token":
+            return "🔄 刷新券"
+        parsed = parse_directed_enchant_id(item_id)
+        if parsed:
+            skill_id, value = parsed
+            return f"🎯 定向附魔券[{ROD_SKILL_DESCRIPTIONS.get(skill_id, skill_id)}+{int(value*100)}%]"
+        return item_id or "未知道具"
     return "未知物品"
+
+
+def calc_item_value(item_id: str, count: int = 1) -> int:
+    """计算道具类物品默认价值（用于拍卖行定价和直接出售）"""
+    if item_id == "refresh_token":
+        return 30 * count
+    parsed = parse_directed_enchant_id(item_id)
+    if parsed:
+        skill_id, value = parsed
+        base_price = DIRECTED_ENCHANT_CONFIG["base_prices"].get(value, 0)
+        return base_price * count
+    return 0
 
 
 def weighted_random_choice(items: list, key: str = "weight") -> dict:

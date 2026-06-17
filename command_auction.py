@@ -2,7 +2,7 @@
 from .commands_base import CommandBase
 from .utils import (
     format_rod_name, format_bait_name, get_item_name_for_auction,
-    calc_rod_value, calc_bait_value, calc_fish_value,
+    calc_rod_value, calc_bait_value, calc_fish_value, calc_item_value,
 )
 from .fish_data import (
     get_fish_by_id, get_prefix_by_id, get_bait_by_id, get_rod_prefix, get_bait_prefix,
@@ -83,7 +83,7 @@ class AuctionCommands(CommandBase):
         
         if action in ("出售", "sell"):
             if len(args) < 2:
-                return "用法: /拍卖 出售 <类型> <编号>\n类型: rod(钓竿), bait(鱼饵), fish(渔获), ticket(附魔券)"
+                return "用法: /拍卖 出售 <类型> <编号/ID>\n类型: rod(钓竿), bait(鱼饵), fish(渔获), ticket(附魔券), item(道具券)\n道具ID示例: refresh_token、directed_enchant_swift_10"
             item_type = args[0].lower()
             item_ref = args[1]
             
@@ -206,11 +206,31 @@ class AuctionCommands(CommandBase):
                         result += f"\n\n🏅 解锁成就 [{ach['name']}]！\n💰 +{ach.get('reward_coins', 0)} 金币 📈 +{ach.get('reward_exp', 0)} 经验"
                     return result
                 
+                elif item_type == "item":
+                    item_id = item_ref
+                    count = user.get_item_count(item_id)
+                    if count <= 0:
+                        return "你没有该道具"
+                    value = calc_item_value(item_id, count)
+                    sell_price = int(value * self.star.auction_default_price_percent)
+                    if not user.remove_item(item_id, count):
+                        return "出售失败"
+                    user.add_coins(sell_price)
+
+                    new_achievements = user.check_achievements()
+
+                    await self.storage.save_user(user)
+                    name = get_item_name_for_auction({"type": "item", "item_id": item_id})
+                    result = f"✅ 已直接出售 {name} x{count}，获得 {sell_price} 金币"
+                    for ach in new_achievements:
+                        result += f"\n\n🏅 解锁成就 [{ach['name']}]！\n💰 +{ach.get('reward_coins', 0)} 金币 📈 +{ach.get('reward_exp', 0)} 经验"
+                    return result
+                
                 return "无效的物品类型"
         
         if action in ("上架", "listing"):
             if len(args) < 2:
-                return "用法: /拍卖 上架 <类型> <编号/ID> [价格]\n类型: rod(钓竿), bait(鱼饵), fish(渔获), ticket(附魔券)"
+                return "用法: /拍卖 上架 <类型> <编号/ID> [价格]\n类型: rod(钓竿), bait(鱼饵), fish(渔获), ticket(附魔券), item(道具券)\n道具ID示例: refresh_token、directed_enchant_swift_10"
             item_type = args[0].lower()
             item_ref = args[1]
             custom_price = None
@@ -389,6 +409,35 @@ class AuctionCommands(CommandBase):
                         "price": price,
                     })
                 
+                elif item_type == "item":
+                    item_id = item_ref
+                    count = user.get_item_count(item_id)
+                    if count <= 0:
+                        return "你没有该道具"
+                    
+                    value = calc_item_value(item_id, count)
+                    default_price = int(value * self.star.auction_default_price_percent)
+                    min_price = int(default_price * (1 - self.star.auction_price_range_percent))
+                    max_price = int(default_price * (1 + self.star.auction_price_range_percent))
+                    
+                    if custom_price is not None:
+                        if custom_price < min_price or custom_price > max_price:
+                            return f"价格必须在 {min_price} ~ {max_price} 金币之间（默认{default_price}）"
+                        price = custom_price
+                    else:
+                        price = default_price
+                    
+                    if not user.remove_item(item_id, count):
+                        return "上架失败"
+                    
+                    name = get_item_name_for_auction({"type": "item", "item_id": item_id})
+                    item_data.update({
+                        "item_id": item_id,
+                        "count": count,
+                        "name": name,
+                        "price": price,
+                    })
+                
                 else:
                     return "无效的物品类型"
                 
@@ -425,6 +474,8 @@ class AuctionCommands(CommandBase):
                     user.add_fish(item_data["fish_id"], item_data["prefix_id"], item_data.get("count", 1))
                 elif item_type == "ticket":
                     user.add_enchant_ticket(item_data["ticket_id"], item_data.get("count", 1))
+                elif item_type == "item":
+                    user.add_item(item_data["item_id"], item_data.get("count", 1))
                 
                 await self.storage.save_user(user)
                 return f"✅ 已取消上架，{item_data.get('name', '物品')} 已退回" + self._get_latest_rods_summary(user)
@@ -488,6 +539,8 @@ class AuctionCommands(CommandBase):
                         buyer.add_fish(item_data["fish_id"], item_data["prefix_id"], item_data.get("count", 1))
                     elif item_type == "ticket":
                         buyer.add_enchant_ticket(item_data["ticket_id"], item_data.get("count", 1))
+                    elif item_type == "item":
+                        buyer.add_item(item_data["item_id"], item_data.get("count", 1))
 
                     # 成就检查
                     buyer_new_achievements = buyer.check_achievements()
@@ -502,4 +555,4 @@ class AuctionCommands(CommandBase):
                         result += "\n\n📢 卖家也解锁了成就：" + "、".join([ach['name'] for ach in seller_new_achievements])
                     return result
         
-        return "未知操作。用法:\n/拍卖 列表 [页码]\n/拍卖 搜索 <关键词> [页码]\n/拍卖 上架 <类型> <编号> [价格]\n/拍卖 出售 <类型> <编号>\n/拍卖 取消 <上架编号>\n/拍卖 购买 <上架编号>"
+        return "未知操作。用法:\n/拍卖 列表 [页码]\n/拍卖 搜索 <关键词> [页码]\n/拍卖 上架 <类型> <编号/ID> [价格]\n/拍卖 出售 <类型> <编号/ID>\n/拍卖 取消 <上架编号>\n/拍卖 购买 <上架编号>\n类型: rod(钓竿), bait(鱼饵), fish(渔获), ticket(附魔券), item(道具券)"
