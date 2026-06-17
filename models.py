@@ -119,6 +119,8 @@ class UserData:
         self._data["coins"] = self.coins + amount
 
     def remove_coins(self, amount: int) -> bool:
+        if amount <= 0:
+            return False
         if self.coins >= amount:
             self._data["coins"] -= amount
             return True
@@ -331,6 +333,17 @@ class UserData:
                 if current.get("instance_id") == instance_id:
                     current["enchant_count"] = enchant_count
                     current["skills"] = dict(skills)
+                return True
+        return False
+
+    def update_rod_prefix(self, instance_id: str, prefix_id: str) -> bool:
+        """通过 instance_id 更新钓竿前缀（用于贪婪/无尽贪婪切换），同步更新当前装备"""
+        for rod in self._data.get("owned_rods", []):
+            if rod.get("instance_id") == instance_id:
+                rod["prefix_id"] = prefix_id
+                current = self._data.get("current_rod", {})
+                if current.get("instance_id") == instance_id:
+                    current["prefix_id"] = prefix_id
                 return True
         return False
 

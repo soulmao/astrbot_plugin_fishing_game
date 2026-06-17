@@ -121,6 +121,10 @@ class EconomyCommands(CommandBase):
             
             item = items[index - 1]
             
+            # 校验数量
+            if quantity <= 0:
+                return "❌ 购买数量必须大于 0"
+            
             # 计算总价
             total_price = item["price"] * quantity
             

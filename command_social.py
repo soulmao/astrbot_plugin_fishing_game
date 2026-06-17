@@ -33,6 +33,8 @@ class SocialCommands(CommandBase):
                     return f"今日赠送次数已用完（{GIVE_LIMITS['daily_limit']}/天）"
                 
                 # 限制数量
+                if quantity <= 0:
+                    return "❌ 赠送数量必须大于 0"
                 if quantity > GIVE_LIMITS["max_per_give"]:
                     return f"单次最多赠送 {GIVE_LIMITS['max_per_give']} 个"
                 

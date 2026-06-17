@@ -38,7 +38,8 @@ class FishingFishTool(FunctionTool[AstrAgentContext]):
     """执行钓鱼操作"""
     name: str = "fishing_fish"
     description: str = (
-        "执行钓鱼操作，消耗1个鱼饵获得随机鱼类。需要先确保用户有鱼饵。"
+        "执行钓鱼操作。普通钓竿每轮消耗 1 个鱼饵，实际尝试次数受幸运、贪婪/无尽贪婪等效果影响；"
+        "金币钓竿消耗当前金币 10%（至少 100）；胡萝卜钓竿不消耗鱼饵。"
         "如果用户说想钓鱼、去钓鱼，调用此工具。"
     )
     parameters: dict = Field(default_factory=lambda: {
@@ -587,3 +588,30 @@ class FishingUpgradeShopTool(FunctionTool[AstrAgentContext]):
     async def call(self, context: ContextWrapper[AstrAgentContext], **kwargs):
         event = context.context.event
         return await self.plugin._cmd_with_scramble(event, "cmd_upgrade_shop")
+
+
+@dataclass
+class FishingGreedyToggleTool(FunctionTool[AstrAgentContext]):
+    """切换贪婪/无尽贪婪钓竿前缀"""
+    name: str = "fishing_greedy_toggle"
+    description: str = (
+        "在「贪婪的」与「无尽贪婪的」钓竿前缀之间切换。默认切换当前装备钓竿，"
+        "可通过 rod_index 指定背包中的钓竿编号。消耗 1000 金币，只有带有贪婪前缀的钓竿才能切换。"
+        "当用户说切换贪婪、变成无尽贪婪、把钓竿改成贪婪模式时调用。"
+    )
+    parameters: dict = Field(default_factory=lambda: {
+        "type": "object",
+        "properties": {
+            "rod_index": {
+                "type": "number",
+                "description": "钓竿编号（从1开始），不指定则切换当前装备钓竿"
+            }
+        },
+        "required": []
+    })
+    plugin: Any = None
+
+    async def call(self, context: ContextWrapper[AstrAgentContext], **kwargs):
+        event = context.context.event
+        rod_index = int(kwargs.get("rod_index", 0))
+        return await self.plugin._cmd_with_scramble(event, "cmd_greedy_toggle", rod_index)

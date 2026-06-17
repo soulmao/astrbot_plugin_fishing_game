@@ -21,14 +21,14 @@ from .llm_tools import (
     FishingMyBaitsTool, FishingEquipBaitTool, FishingShopRefreshTool,
     FishingCollectionTool, FishingAchievementsTool,
     FishingAuctionTool, FishingEnchantTool, FishingEnchantUpgradeTool,
-    FishingDirectedEnchantTool, FishingUpgradeShopTool,
+    FishingDirectedEnchantTool, FishingUpgradeShopTool, FishingGreedyToggleTool,
 )
 import time
 import asyncio
 import difflib
 
 
-@register("fishing_game", "AstrBot", "钓鱼游戏插件 - 群聊娱乐插件，支持钓鱼、背包、商店、赠送等完整经济系统", "V4.2.0")
+@register("fishing_game", "AstrBot", "钓鱼游戏插件 - 群聊娱乐插件，支持钓鱼、背包、商店、赠送等完整经济系统", "V4.3.0")
 class FishingGamePlugin(Star):
     def __init__(self, context: Context, config=None):
         super().__init__(context)
@@ -117,6 +117,7 @@ class FishingGamePlugin(Star):
             'cmd_enchant': (self.enchant_cmds, 'cmd_enchant'),
             'cmd_enchant_upgrade': (self.enchant_cmds, 'cmd_enchant_upgrade'),
             'cmd_directed_enchant': (self.enchant_cmds, 'cmd_directed_enchant'),
+            'cmd_greedy_toggle': (self.enchant_cmds, 'cmd_greedy_toggle'),
             # 成就系统
             'cmd_achievements': (self.achievement_cmds, 'cmd_achievements'),
             # 管理员系统
@@ -145,6 +146,7 @@ class FishingGamePlugin(Star):
             'cmd_enchant': ['附魔', '强化', 'enchant', 'ench', '魔改'],
             'cmd_enchant_upgrade': ['附魔升级', '升级附魔', 'enchant_upgrade', 'upgrade_enchant'],
             'cmd_directed_enchant': ['定向附魔', 'directed_enchant', 'target_enchant'],
+            'cmd_greedy_toggle': ['切换贪婪', '贪婪切换', 'greedy_toggle', 'toggle_greedy'],
             'cmd_achievements': ['成就', 'achievements', 'achievement', 'trophy'],
             'cmd_shop_refresh': ['刷新商店', 'shop_refresh', 'refresh_shop'],
             'cmd_upgrade_shop': ['升级商店', 'upgrade_shop', 'shop_upgrade'],
@@ -180,6 +182,7 @@ class FishingGamePlugin(Star):
             '附魔', 'enchant',
             '附魔升级', 'enchant_upgrade',
             '定向附魔', 'directed_enchant',
+            '切换贪婪', 'greedy_toggle',
             # 成就系统
             '成就', 'achievements',
         }
@@ -197,6 +200,7 @@ class FishingGamePlugin(Star):
             'cmd_enchant': [int],
             'cmd_enchant_upgrade': [str, str],
             'cmd_directed_enchant': [str, str],
+            'cmd_greedy_toggle': [int],
         }
 
     def _fuzzy_match_command(self, word: str) -> tuple:
@@ -299,6 +303,7 @@ class FishingGamePlugin(Star):
             FishingEnchantUpgradeTool(plugin=self),
             FishingDirectedEnchantTool(plugin=self),
             FishingUpgradeShopTool(plugin=self),
+            FishingGreedyToggleTool(plugin=self),
         ]
         self.context.add_llm_tools(*tools)
         logger.info(f"已注册 {len(tools)} 个 Fishing FunctionTool")
@@ -389,6 +394,10 @@ class FishingGamePlugin(Star):
                         except Exception as e:
                             logger.error(f"重置用户 {uid} 每日赠送次数失败: {e}")
                     logger.info(f"已重置 {reset_count} 位用户的每日赠送次数")
+                    
+                    # 重建嫉妒前缀所需的等级分布缓存
+                    await self.storage.update_level_distribution_cache()
+                    logger.info("已重建等级分布缓存")
                 except Exception as e:
                     logger.error(f"每日刷新执行失败: {e}")
 
@@ -412,7 +421,7 @@ class FishingGamePlugin(Star):
             user = await self.storage.get_user(user_id)
             rod = user.current_rod
             prefix = get_rod_prefix(rod.get("prefix_id", ""))
-            if prefix.get("skills", {}).get("greedy"):
+            if prefix.get("skills", {}).get("greedy") or prefix.get("skills", {}).get("endless_greedy"):
                 intensity = min(user.coins / 100000, 1.0)
                 return scramble_text(text, intensity)
         except Exception:
@@ -570,6 +579,12 @@ class FishingGamePlugin(Star):
         '''定向附魔 - 使用定向附魔券为当前装备钓竿添加/升级指定技能。用法: /定向附魔 [技能名] [档位]
         示例: /定向附魔 远航 10    /定向附魔 迅捷 5'''
         async for r in self._route_cmd(event, 'cmd_directed_enchant', skill_name, tier_str): yield r
+
+    @filter.command("切换贪婪", alias={"greedy_toggle"})
+    async def cmd_greedy_toggle(self, event: AstrMessageEvent, rod_index: int = 0):
+        '''切换贪婪 - 在「贪婪的」与「无尽贪婪的」钓竿前缀之间切换。不传编号则默认切换当前装备钓竿。
+        示例: /切换贪婪    /切换贪婪 2'''
+        async for r in self._route_cmd(event, 'cmd_greedy_toggle', rod_index): yield r
 
     # ---------- 成就系统 ----------
 

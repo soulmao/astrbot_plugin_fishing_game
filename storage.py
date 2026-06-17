@@ -15,6 +15,42 @@ class StorageManager:
     def __init__(self, star):
         self.star = star
         self._auction_lock = asyncio.Lock()
+        self._level_cache_lock = asyncio.Lock()
+        self._level_distribution_cache: Dict[int, int] = {}
+        self._level_cache_timestamp = 0
+
+    async def update_level_distribution_cache(self):
+        """重建用户等级分布缓存，建议每日刷新时调用"""
+        async with self._level_cache_lock:
+            all_ids = await self.get_all_user_ids()
+            dist: Dict[int, int] = {}
+            for uid in all_ids:
+                try:
+                    user = await self.get_user(uid)
+                    dist[user.level] = dist.get(user.level, 0) + 1
+                except Exception:
+                    continue
+            self._level_distribution_cache = dist
+            self._level_cache_timestamp = int(time.time())
+
+    async def get_higher_level_count(self, user_level: int) -> int:
+        """返回等级严格高于 user_level 的玩家数量；缓存为空时自动重建一次"""
+        async with self._level_cache_lock:
+            if not self._level_distribution_cache:
+                all_ids = await self.get_all_user_ids()
+                dist: Dict[int, int] = {}
+                for uid in all_ids:
+                    try:
+                        user = await self.get_user(uid)
+                        dist[user.level] = dist.get(user.level, 0) + 1
+                    except Exception:
+                        continue
+                self._level_distribution_cache = dist
+                self._level_cache_timestamp = int(time.time())
+            return sum(
+                count for lvl, count in self._level_distribution_cache.items()
+                if lvl > user_level
+            )
 
     async def get_kv_data(self, key, default=None):
         return await self.star.get_kv_data(key, default)

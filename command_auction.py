@@ -111,9 +111,13 @@ class AuctionCommands(CommandBase):
                         cursed_penalty = int(sell_price * 0.20)
                         if user.coins < cursed_penalty:
                             return f"诅咒钓竿卖出需要扣除 {cursed_penalty} 金币，你当前金币不足"
-                        user.remove_coins(cursed_penalty)
+                    
                     if not user.remove_rod(rod["instance_id"]):
                         return "出售失败"
+                    
+                    # 移除成功后再执行惩罚，避免 remove_rod 失败时金币已扣
+                    if cursed_penalty > 0:
+                        user.remove_coins(cursed_penalty)
                     user.add_coins(sell_price)
 
                     new_achievements = user.check_achievements()
@@ -278,10 +282,13 @@ class AuctionCommands(CommandBase):
                         cursed_penalty = int(price * 0.20)
                         if user.coins < cursed_penalty:
                             return f"诅咒钓竿上架需要扣除 {cursed_penalty} 金币，你当前金币不足"
-                        user.remove_coins(cursed_penalty)
                     
                     if not user.remove_rod(rod["instance_id"]):
                         return "上架失败"
+                    
+                    # 移除成功后再执行惩罚，避免 remove_rod 失败时金币已扣
+                    if cursed_penalty > 0:
+                        user.remove_coins(cursed_penalty)
                     
                     item_data.update({
                         "base_id": rod["base_id"],

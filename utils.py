@@ -10,6 +10,7 @@ from .fish_data import (
     DIRECTED_ENCHANT_CONFIG, SHOP_UPGRADE_CONFIG,
     calc_rod_value, calc_bait_value, calc_fish_value,
     get_rod_prefix, get_bait_prefix,
+    ARROGANT_COMPATIBLE_BASES,
 )
 from .models import UserData
 
@@ -59,13 +60,36 @@ def format_rod_skills(prefix_id: str, rod_skills: dict = None) -> str:
     if not effective_skills:
         return ""
     parts = []
+    # 标记型技能（无具体百分比，只显示标签）
+    marker_skills = {"arrogant", "greedy", "endless_greedy", "cursed", "lucky_block", "jealous"}
     for sid, val in effective_skills.items():
         label = ROD_SKILL_DESCRIPTIONS.get(sid, sid)
-        if sid in ("lucky", "exp_boost", "voyage", "mending"):
+        if sid in marker_skills:
+            parts.append(f"{label}")
+        elif sid in ("lucky", "exp_boost", "voyage", "mending"):
             parts.append(f"{label}+{int(val*100)}%")
         else:
             parts.append(f"{label}{int(val*100)}%")
     return " [" + " | ".join(parts) + "]"
+
+
+def can_apply_rod_prefix(base_id: str, prefix_id: str) -> bool:
+    """检查某前缀是否可以附加到某基础钓竿上
+    
+    特种钓竿（no_prefix）不允许任何前缀；
+    傲慢前缀仅限金色/神级钓竿。
+    """
+    rod_base = get_rod_by_id(base_id)
+    prefix = get_rod_prefix(prefix_id)
+    if not rod_base or not prefix:
+        return False
+    # 特种钓竿（金币钓竿、胡萝卜钓竿）禁止任何前缀
+    if rod_base.get("no_prefix"):
+        return prefix_id == ""
+    # 傲慢前缀白名单校验
+    if prefix.get("skills", {}).get("arrogant"):
+        return base_id in ARROGANT_COMPATIBLE_BASES
+    return True
 
 
 def format_bait_name(bait: dict) -> str:
@@ -202,6 +226,9 @@ def generate_shop_items(user: UserData) -> list:
             else:
                 for prefix in ROD_PREFIXES:
                     if "min_level" not in prefix or prefix["min_level"] <= level:
+                        # 傲慢前缀只能出现在金色/神级钓竿上
+                        if not can_apply_rod_prefix(rod["base_id"], prefix["id"]):
+                            continue
                         price = rod["price"] * prefix["multiplier"]
                         if price > 0:  # 0价格为赠品
                             items.append({

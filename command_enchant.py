@@ -54,12 +54,13 @@ class EnchantCommands(CommandBase):
             else:
                 final_price = price
             
+            if user.coins < final_price:
+                return f"金币不足！附魔需要 {final_price} 金币，你只有 {user.coins} 金币"
+
             if use_ticket:
                 if not user.remove_enchant_ticket(best_ticket["ticket_id"], 1):
                     return "附魔券扣除失败"
 
-            if user.coins < final_price:
-                return f"金币不足！附魔需要 {final_price} 金币，你只有 {user.coins} 金币"
             user.remove_coins(final_price)
             
             # 执行附魔
@@ -121,9 +122,10 @@ class EnchantCommands(CommandBase):
             if not a:
                 continue
             sa = str(a)
-            if sa.isdigit():
+            # 第一个数字参数解析为钓竿编号，其余作为技能名
+            if rod_index == 0 and sa.isdigit():
                 rod_index = int(sa)
-            else:
+            elif not skill_name:
                 skill_name = sa
         
         # 将中文技能名映射到ID
@@ -292,3 +294,56 @@ class EnchantCommands(CommandBase):
                 result += f"\n\n🏅 解锁成就 [{ach['name']}]！\n💰 +{ach.get('reward_coins', 0)} 金币 📈 +{ach.get('reward_exp', 0)} 经验"
 
             return result
+
+
+    async def cmd_greedy_toggle(self, event, rod_index: int = 0) -> str:
+        """在「贪婪的」与「无尽贪婪的」钓竿前缀之间切换。rod_index=0 时默认切换当前装备钓竿"""
+        user_id = event.get_sender_id()
+        async with self._get_user_lock(user_id):
+            user = await self.storage.get_user(user_id)
+            
+            rods = user.get_owned_rods()
+            if rod_index < 1 or rod_index > len(rods):
+                current = user.current_rod
+                found = False
+                for i, r in enumerate(rods, 1):
+                    if r.get("instance_id") == current.get("instance_id"):
+                        rod_index = i
+                        found = True
+                        break
+                if not found:
+                    return f"钓竿编号无效，你有 {len(rods)} 根钓竿"
+            
+            rod = dict(rods[rod_index - 1])
+            current_prefix_id = rod.get("prefix_id", "")
+            
+            toggle_map = {
+                "rod_pref_12": "rod_pref_19",
+                "rod_pref_19": "rod_pref_12",
+            }
+            if current_prefix_id not in toggle_map:
+                rod_name = format_rod_name(rod)
+                return f"❌ {rod_name} 不是贪婪/无尽贪婪钓竿，无法切换"
+            
+            new_prefix_id = toggle_map[current_prefix_id]
+            old_name = format_rod_name(rod)
+            
+            # 切换费用
+            toggle_cost = 1000
+            if user.coins < toggle_cost:
+                return f"❌ 切换需要 {toggle_cost} 金币，你只有 {user.coins} 金币"
+            
+            if not user.remove_coins(toggle_cost):
+                return "❌ 金币扣除失败"
+            
+            if not user.update_rod_prefix(rod["instance_id"], new_prefix_id):
+                user.add_coins(toggle_cost)  # 回滚
+                return "❌ 切换失败，请稍后再试"
+            
+            await self.storage.save_user(user)
+            
+            new_rod = dict(rod)
+            new_rod["prefix_id"] = new_prefix_id
+            new_name = format_rod_name(new_rod)
+            
+            return f"✅ 切换成功！\n🎣 {old_name} → {new_name}\n💰 消耗 {toggle_cost} 金币"

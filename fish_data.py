@@ -111,6 +111,8 @@ ROD_PREFIXES = [
     # 新增特殊前缀
     {"id": "rod_pref_12", "name": "贪婪的", "multiplier": 2.0, "max_slots": 5, "min_level": 5,
      "skills": {"greedy": 1.0}},
+    {"id": "rod_pref_19", "name": "无尽贪婪的", "multiplier": 2.5, "max_slots": 6, "min_level": 7,
+     "skills": {"endless_greedy": 1.0}},
     {"id": "rod_pref_13", "name": "诅咒的", "multiplier": 0.8, "max_slots": 6, "min_level": 5,
      "skills": {"cursed": 1.0}},
     {"id": "rod_pref_14", "name": "迅捷的", "multiplier": 1.5, "max_slots": 3, "min_level": 4,
@@ -119,7 +121,16 @@ ROD_PREFIXES = [
      "skills": {"exp_boost": 0.80, "coin_reduce": 0.50}},
     {"id": "rod_pref_16", "name": "幸运方块的", "multiplier": 1.8, "max_slots": 99, "min_level": 6,
      "skills": {"lucky_block": 1.0}},
+    # 傲慢前缀：仅限金色/神级钓竿；睥睨过滤低稀有度鱼，自负要求鱼饵品质 >= rare
+    {"id": "rod_pref_17", "name": "傲慢的", "multiplier": 2.2, "max_slots": 5, "min_level": 6,
+     "skills": {"arrogant": 1.0}},
+    # 嫉妒前缀：攀比之力，等级差距带来稀有度加成
+    {"id": "rod_pref_18", "name": "嫉妒的", "multiplier": 2.0, "max_slots": 5, "min_level": 5,
+     "skills": {"jealous": 1.0}},
 ]
+
+# 傲慢前缀可附加的基础钓竿白名单
+ARROGANT_COMPATIBLE_BASES = {"rod_004", "rod_005"}
 
 # 鱼饵基础类型
 BAIT_BASES = [
@@ -380,6 +391,9 @@ ROD_SKILL_DESCRIPTIONS = {
     "fail_chance": "💥失误",
     "coin_reduce": "📉清贫",
     "lucky_block": "🎲幸运方块",
+    "arrogant": "👑傲慢",
+    "jealous": "💢嫉妒",
+    "endless_greedy": "♾️无尽贪婪",
 }
 
 # 成就定义

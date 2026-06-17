@@ -3,7 +3,7 @@ import time
 from typing import Optional
 
 from .commands_base import CommandBase
-from .utils import extract_target_user_id, format_rod_name, format_bait_name
+from .utils import extract_target_user_id, format_rod_name, format_bait_name, can_apply_rod_prefix
 from .fish_data import (
     get_rod_by_id, get_rod_prefix, get_bait_by_id, get_bait_prefix,
     get_prefix_by_id, get_fish_by_id, calc_fish_value,
@@ -257,6 +257,11 @@ UID: {target_uid}
         rod_base = get_rod_by_id(base_id)
         if not rod_base:
             return f"❌ 钓竿 base_id {base_id} 不存在"
+
+        prefix_info = get_rod_prefix(prefix_id)
+        # 校验前缀与基础钓竿兼容性（特种钓竿、傲慢前缀白名单等）
+        if not can_apply_rod_prefix(base_id, prefix_id):
+            return f"❌ 前缀 {prefix_info.get('name', prefix_id)} 不能附加到钓竿 {rod_base.get('name', base_id)} 上"
 
         # 特种钓竿不带前缀
         if rod_base.get("no_prefix"):

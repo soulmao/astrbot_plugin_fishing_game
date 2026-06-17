@@ -2,7 +2,7 @@
 from .commands_base import CommandBase
 from .utils import (
     format_rod_name, format_rod_skills, format_bait_name,
-    calc_enchant_price, get_available_skills,
+    calc_enchant_price, get_available_skills, can_apply_rod_prefix,
 )
 from .fish_data import get_rod_prefix
 from .storage import StorageManager
@@ -76,6 +76,9 @@ class EquipmentCommands(CommandBase):
                 return f"编号无效，你有 {len(rods)} 根钓竿"
             
             rod = rods[index - 1]
+            if not can_apply_rod_prefix(rod["base_id"], rod["prefix_id"]):
+                rod_name = format_rod_name(rod)
+                return f"❌ 无法装备 {rod_name}：该前缀与钓竿不兼容"
             if user.equip_rod(rod["instance_id"]):
                 await self.storage.save_user(user)
                 rod_name = format_rod_name(rod)
