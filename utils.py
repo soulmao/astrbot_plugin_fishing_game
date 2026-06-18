@@ -10,7 +10,7 @@ from .fish_data import (
     DIRECTED_ENCHANT_CONFIG, SHOP_UPGRADE_CONFIG,
     calc_rod_value, calc_bait_value, calc_fish_value,
     get_rod_prefix, get_bait_prefix,
-    ARROGANT_COMPATIBLE_BASES,
+    ARROGANT_COMPATIBLE_BASES, SPECIAL_PREFIX_BALANCE,
 )
 from .models import UserData
 
@@ -103,7 +103,7 @@ def format_bait_name(bait: dict) -> str:
 
 def calc_enchant_price(rod: dict) -> int:
     """计算附魔价格 = 鱼竿价值 × 30% × 2^enchant_count（倍增）
-    诅咒前缀：价格大幅打折（20%）"""
+    诅咒前缀享受折扣，但仍需承担可感知的养成成本。"""
     value = calc_rod_value(
         rod.get("base_id", ""), rod.get("prefix_id", ""), rod.get("skills")
     )
@@ -113,7 +113,7 @@ def calc_enchant_price(rod: dict) -> int:
     # 诅咒前缀打折
     prefix = get_rod_prefix(rod.get("prefix_id", ""))
     if prefix.get("skills", {}).get("cursed"):
-        price = int(price * 0.20)
+        price = int(price * SPECIAL_PREFIX_BALANCE["cursed"]["enchant_price_multiplier"])
     return max(1, price)
 
 

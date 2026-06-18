@@ -38,8 +38,10 @@ class FishingFishTool(FunctionTool[AstrAgentContext]):
     """执行钓鱼操作"""
     name: str = "fishing_fish"
     description: str = (
-        "执行钓鱼操作。普通钓竿每轮消耗 1 个鱼饵，实际尝试次数受幸运、贪婪/无尽贪婪等效果影响；"
+        "执行钓鱼操作。普通钓竿每轮消耗 1 个鱼饵；"
         "金币钓竿消耗当前金币 10%（至少 100）；胡萝卜钓竿不消耗鱼饵。"
+        "装备贪婪/无尽贪婪钓竿时，钓鱼不会直接结算，而是进入挂起状态生成【贪欲结晶】，"
+        "之后用户需要发送 /收杆 结算或 /贪婪 继续赌一把。"
         "如果用户说想钓鱼、去钓鱼，调用此工具。"
     )
     parameters: dict = Field(default_factory=lambda: {
@@ -615,3 +617,44 @@ class FishingGreedyToggleTool(FunctionTool[AstrAgentContext]):
         event = context.context.event
         rod_index = int(kwargs.get("rod_index", 0))
         return await self.plugin._cmd_with_scramble(event, "cmd_greedy_toggle", rod_index)
+
+
+@dataclass
+class FishingGreedyContinueTool(FunctionTool[AstrAgentContext]):
+    """继续贪婪挂起状态"""
+    name: str = "fishing_greedy_continue"
+    description: str = (
+        "继续当前的贪婪/无尽贪婪挂起状态。用已生成的【贪欲结晶】作为特殊鱼饵再次抛竿，"
+        "有概率获得更高倍率的奖励，也有概率断线爆仓（失去所有结晶并扣除 10% 当前金币修理费）。"
+        "当用户说继续贪婪、再赌一把、贪婪时说调用。"
+    )
+    parameters: dict = Field(default_factory=lambda: {
+        "type": "object",
+        "properties": {},
+        "required": []
+    })
+    plugin: Any = None
+
+    async def call(self, context: ContextWrapper[AstrAgentContext], **kwargs):
+        event = context.context.event
+        return await self.plugin._cmd_with_scramble(event, "cmd_greedy_continue")
+
+
+@dataclass
+class FishingGreedyCashoutTool(FunctionTool[AstrAgentContext]):
+    """结算贪婪挂起状态"""
+    name: str = "fishing_greedy_cashout"
+    description: str = (
+        "结算当前贪婪/无尽贪婪挂起状态，将【贪欲结晶】兑换为金币和经验，并进入钓鱼冷却。"
+        "当用户说收杆、结算、不赌了、落袋为安时调用。"
+    )
+    parameters: dict = Field(default_factory=lambda: {
+        "type": "object",
+        "properties": {},
+        "required": []
+    })
+    plugin: Any = None
+
+    async def call(self, context: ContextWrapper[AstrAgentContext], **kwargs):
+        event = context.context.event
+        return await self.plugin._cmd_with_scramble(event, "cmd_greedy_cashout")

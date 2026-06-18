@@ -61,6 +61,9 @@ class UserData:
         # 商店等级
         if "shop_level" not in self._data:
             self._data["shop_level"] = 0
+        # 贪婪状态机
+        if "greedy_state" not in self._data:
+            self._data["greedy_state"] = None
 
     def _default_data(self) -> Dict:
         """默认玩家数据"""
@@ -104,6 +107,8 @@ class UserData:
             "achievements": [],
             # 商店等级
             "shop_level": 0,
+            # 贪婪状态机（挂起状态）
+            "greedy_state": None,
         }
 
     def to_dict(self) -> Dict:
@@ -116,7 +121,10 @@ class UserData:
         return self._data.get("coins", 0)
 
     def add_coins(self, amount: int):
+        if amount < 0:
+            return False
         self._data["coins"] = self.coins + amount
+        return True
 
     def remove_coins(self, amount: int) -> bool:
         if amount <= 0:
@@ -647,6 +655,44 @@ class UserData:
     @shop_level.setter
     def shop_level(self, value: int):
         self._data["shop_level"] = value
+
+    # 贪婪状态机
+    @property
+    def greedy_state(self) -> Optional[Dict]:
+        return self._data.get("greedy_state")
+
+    def is_greedy_active(self) -> bool:
+        state = self._data.get("greedy_state")
+        return bool(state and state.get("active"))
+
+    def start_greedy(self, rod_instance_id: str, rod_prefix_id: str, initial_bait: Dict,
+                     chip: Dict, bait_cost_total: int) -> None:
+        """启动一次贪婪挂起状态"""
+        self._data["greedy_state"] = {
+            "active": True,
+            "stack": 1,
+            "rod_instance_id": rod_instance_id,
+            "rod_prefix_id": rod_prefix_id,
+            "initial_bait": dict(initial_bait),
+            "bait_cost_total": bait_cost_total,
+            "chip": dict(chip),
+        }
+
+    def update_greedy_chip(self, chip: Dict, bait_cost_delta: int = 0, stack_delta: int = 1) -> bool:
+        """更新贪婪结晶，层数默认 +1"""
+        state = self._data.get("greedy_state")
+        if not state or not state.get("active"):
+            return False
+        state["chip"] = dict(chip)
+        state["stack"] = state.get("stack", 1) + stack_delta
+        state["bait_cost_total"] = state.get("bait_cost_total", 0) + bait_cost_delta
+        return True
+
+    def clear_greedy(self) -> Optional[Dict]:
+        """清空贪婪状态，返回被清空的旧状态"""
+        old = self._data.get("greedy_state")
+        self._data["greedy_state"] = None
+        return old
 
     # 获取定向附魔券列表
     def get_directed_enchant_tickets(self) -> list:

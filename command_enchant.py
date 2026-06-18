@@ -301,7 +301,10 @@ class EnchantCommands(CommandBase):
         user_id = event.get_sender_id()
         async with self._get_user_lock(user_id):
             user = await self.storage.get_user(user_id)
-            
+
+            if user.is_greedy_active():
+                return "💰 你有挂起的贪婪状态，无法切换贪婪前缀。请先 /收杆 或等待断线。"
+
             rods = user.get_owned_rods()
             if rod_index < 1 or rod_index > len(rods):
                 current = user.current_rod

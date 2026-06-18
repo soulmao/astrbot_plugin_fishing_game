@@ -70,7 +70,10 @@ class EquipmentCommands(CommandBase):
         user_id = event.get_sender_id()
         async with self._get_user_lock(user_id):
             user = await self.storage.get_user(user_id)
-            
+
+            if user.is_greedy_active():
+                return "💰 你有挂起的贪婪状态，无法更换钓竿。请先 /收杆 或 /贪婪 处理完毕。"
+
             rods = user.get_owned_rods()
             if index < 1 or index > len(rods):
                 return f"编号无效，你有 {len(rods)} 根钓竿"

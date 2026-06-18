@@ -22,7 +22,10 @@ class EconomyCommands(CommandBase):
         user_id = event.get_sender_id()
         async with self._get_user_lock(user_id):
             user = await self.storage.get_user(user_id)
-            
+
+            if user.is_greedy_active():
+                return "💰 贪婪钓竿锁定了你的渔获背包（死期存款中），请先 /收杆 或等待断线后再卖鱼。"
+
             if not user.get_fish_inventory():
                 return "你没有渔获可以出售！"
             

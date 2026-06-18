@@ -14,10 +14,18 @@ class StorageManager:
     """存储管理器"""
     def __init__(self, star):
         self.star = star
+        # 所有命令模块和后台任务共用同一套用户锁，避免整份用户数据互相覆盖。
+        self._user_locks: Dict[str, asyncio.Lock] = {}
         self._auction_lock = asyncio.Lock()
         self._level_cache_lock = asyncio.Lock()
         self._level_distribution_cache: Dict[int, int] = {}
         self._level_cache_timestamp = 0
+
+    def get_user_lock(self, user_id: str) -> asyncio.Lock:
+        """获取共享的用户级锁。"""
+        if user_id not in self._user_locks:
+            self._user_locks[user_id] = asyncio.Lock()
+        return self._user_locks[user_id]
 
     async def update_level_distribution_cache(self):
         """重建用户等级分布缓存，建议每日刷新时调用"""

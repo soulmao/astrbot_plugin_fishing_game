@@ -22,13 +22,14 @@ from .llm_tools import (
     FishingCollectionTool, FishingAchievementsTool,
     FishingAuctionTool, FishingEnchantTool, FishingEnchantUpgradeTool,
     FishingDirectedEnchantTool, FishingUpgradeShopTool, FishingGreedyToggleTool,
+    FishingGreedyContinueTool, FishingGreedyCashoutTool,
 )
 import time
 import asyncio
 import difflib
 
 
-@register("fishing_game", "AstrBot", "钓鱼游戏插件 - 群聊娱乐插件，支持钓鱼、背包、商店、赠送等完整经济系统", "V4.3.0")
+@register("fishing_game", "AstrBot", "钓鱼游戏插件 - 群聊娱乐插件，支持钓鱼、背包、商店、赠送等完整经济系统", "V4.4.0")
 class FishingGamePlugin(Star):
     def __init__(self, context: Context, config=None):
         super().__init__(context)
@@ -118,6 +119,8 @@ class FishingGamePlugin(Star):
             'cmd_enchant_upgrade': (self.enchant_cmds, 'cmd_enchant_upgrade'),
             'cmd_directed_enchant': (self.enchant_cmds, 'cmd_directed_enchant'),
             'cmd_greedy_toggle': (self.enchant_cmds, 'cmd_greedy_toggle'),
+            'cmd_greedy_continue': (self.fishing_cmds, 'cmd_greedy_continue'),
+            'cmd_greedy_cashout': (self.fishing_cmds, 'cmd_greedy_cashout'),
             # 成就系统
             'cmd_achievements': (self.achievement_cmds, 'cmd_achievements'),
             # 管理员系统
@@ -147,6 +150,8 @@ class FishingGamePlugin(Star):
             'cmd_enchant_upgrade': ['附魔升级', '升级附魔', 'enchant_upgrade', 'upgrade_enchant'],
             'cmd_directed_enchant': ['定向附魔', 'directed_enchant', 'target_enchant'],
             'cmd_greedy_toggle': ['切换贪婪', '贪婪切换', 'greedy_toggle', 'toggle_greedy'],
+            'cmd_greedy_continue': ['贪婪', '继续贪婪', 'greedy_continue', 'continue_greedy'],
+            'cmd_greedy_cashout': ['收杆', '结算贪婪', 'greedy_cashout', 'cashout_greedy'],
             'cmd_achievements': ['成就', 'achievements', 'achievement', 'trophy'],
             'cmd_shop_refresh': ['刷新商店', 'shop_refresh', 'refresh_shop'],
             'cmd_upgrade_shop': ['升级商店', 'upgrade_shop', 'shop_upgrade'],
@@ -183,6 +188,8 @@ class FishingGamePlugin(Star):
             '附魔升级', 'enchant_upgrade',
             '定向附魔', 'directed_enchant',
             '切换贪婪', 'greedy_toggle',
+            '贪婪', '继续贪婪', 'greedy_continue',
+            '收杆', '结算贪婪', 'greedy_cashout',
             # 成就系统
             '成就', 'achievements',
         }
@@ -201,6 +208,8 @@ class FishingGamePlugin(Star):
             'cmd_enchant_upgrade': [str, str],
             'cmd_directed_enchant': [str, str],
             'cmd_greedy_toggle': [int],
+            'cmd_greedy_continue': [],
+            'cmd_greedy_cashout': [],
         }
 
     def _fuzzy_match_command(self, word: str) -> tuple:
@@ -304,6 +313,8 @@ class FishingGamePlugin(Star):
             FishingDirectedEnchantTool(plugin=self),
             FishingUpgradeShopTool(plugin=self),
             FishingGreedyToggleTool(plugin=self),
+            FishingGreedyContinueTool(plugin=self),
+            FishingGreedyCashoutTool(plugin=self),
         ]
         self.context.add_llm_tools(*tools)
         logger.info(f"已注册 {len(tools)} 个 Fishing FunctionTool")
@@ -327,32 +338,33 @@ class FishingGamePlugin(Star):
                         for listing in expired:
                             try:
                                 seller_id = listing["seller_id"]
-                                seller = await self.storage.get_user(seller_id)
-                                item_data = listing.get("item_data", {})
-                                item_type = item_data.get("type", "")
+                                async with self.storage.get_user_lock(seller_id):
+                                    seller = await self.storage.get_user(seller_id)
+                                    item_data = listing.get("item_data", {})
+                                    item_type = item_data.get("type", "")
 
-                                if item_type == "rod":
-                                    seller.add_rod(
-                                        item_data["base_id"],
-                                        item_data["prefix_id"],
-                                        item_data.get("skills", {}),
-                                        item_data.get("enchant_count", 0),
-                                        item_data.get("instance_id")
-                                    )
-                                elif item_type == "bait":
-                                    seller.add_bait(item_data["base_id"], item_data["prefix_id"], item_data.get("count", 1))
-                                elif item_type == "fish":
-                                    seller.add_fish(item_data["fish_id"], item_data["prefix_id"], item_data.get("count", 1))
-                                elif item_type == "ticket":
-                                    seller.add_enchant_ticket(item_data["ticket_id"], item_data.get("count", 1))
-                                elif item_type == "item":
-                                    seller.add_item(item_data["item_id"], item_data.get("count", 1))
+                                    if item_type == "rod":
+                                        seller.add_rod(
+                                            item_data["base_id"],
+                                            item_data["prefix_id"],
+                                            item_data.get("skills", {}),
+                                            item_data.get("enchant_count", 0),
+                                            item_data.get("instance_id")
+                                        )
+                                    elif item_type == "bait":
+                                        seller.add_bait(item_data["base_id"], item_data["prefix_id"], item_data.get("count", 1))
+                                    elif item_type == "fish":
+                                        seller.add_fish(item_data["fish_id"], item_data["prefix_id"], item_data.get("count", 1))
+                                    elif item_type == "ticket":
+                                        seller.add_enchant_ticket(item_data["ticket_id"], item_data.get("count", 1))
+                                    elif item_type == "item":
+                                        seller.add_item(item_data["item_id"], item_data.get("count", 1))
 
-                                notices = seller.get("auction_notices", [])
-                                notices.append(f"你上架的 {item_data.get('name', '物品')} 已过期退回")
-                                seller.set("auction_notices", notices[-10:])
+                                    notices = seller.get("auction_notices", [])
+                                    notices.append(f"你上架的 {item_data.get('name', '物品')} 已过期退回")
+                                    seller.set("auction_notices", notices[-10:])
 
-                                await self.storage.save_user(seller)
+                                    await self.storage.save_user(seller)
                                 returned_count += 1
                             except Exception as e:
                                 logger.error(f"退还拍卖物品 {listing.get('id')} 失败: {e}")
@@ -387,9 +399,10 @@ class FishingGamePlugin(Star):
                     reset_count = 0
                     for uid in all_user_ids:
                         try:
-                            user = await self.storage.get_user(uid)
-                            user.check_and_reset_daily_give()
-                            await self.storage.save_user(user)
+                            async with self.storage.get_user_lock(uid):
+                                user = await self.storage.get_user(uid)
+                                user.check_and_reset_daily_give()
+                                await self.storage.save_user(user)
                             reset_count += 1
                         except Exception as e:
                             logger.error(f"重置用户 {uid} 每日赠送次数失败: {e}")
@@ -414,14 +427,15 @@ class FishingGamePlugin(Star):
         self._refresh_task = asyncio.create_task(self._daily_refresh_loop())
 
     async def _apply_greedy_scramble(self, user_id: str, text: str) -> str:
-        """如果用户装备贪婪钓竿，对返回文本进行打乱"""
+        """如果用户装备无尽贪婪钓竿，对返回文本进行打乱"""
         if not text:
             return text
         try:
             user = await self.storage.get_user(user_id)
             rod = user.current_rod
             prefix = get_rod_prefix(rod.get("prefix_id", ""))
-            if prefix.get("skills", {}).get("greedy") or prefix.get("skills", {}).get("endless_greedy"):
+            # 仅无尽贪婪触发文字打乱
+            if prefix.get("skills", {}).get("endless_greedy"):
                 intensity = min(user.coins / 100000, 1.0)
                 return scramble_text(text, intensity)
         except Exception:
@@ -585,6 +599,16 @@ class FishingGamePlugin(Star):
         '''切换贪婪 - 在「贪婪的」与「无尽贪婪的」钓竿前缀之间切换。不传编号则默认切换当前装备钓竿。
         示例: /切换贪婪    /切换贪婪 2'''
         async for r in self._route_cmd(event, 'cmd_greedy_toggle', rod_index): yield r
+
+    @filter.command("贪婪", alias={"继续贪婪", "greedy_continue"})
+    async def cmd_greedy_continue(self, event: AstrMessageEvent):
+        '''贪婪 - 继续当前的贪婪挂起状态，用贪欲结晶再次抛竿'''
+        async for r in self._route_cmd(event, 'cmd_greedy_continue'): yield r
+
+    @filter.command("收杆", alias={"结算贪婪", "greedy_cashout"})
+    async def cmd_greedy_cashout(self, event: AstrMessageEvent):
+        '''收杆 - 结算当前贪欲结晶，获得金币与经验'''
+        async for r in self._route_cmd(event, 'cmd_greedy_cashout'): yield r
 
     # ---------- 成就系统 ----------
 

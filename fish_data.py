@@ -109,25 +109,47 @@ ROD_PREFIXES = [
     {"id": "rod_pref_11", "name": "古龙收藏的", "multiplier": 4.0, "max_slots": 10, "min_level": 7,
      "skills": {"swift": 0.35, "lucky": 0.25, "harvest": 0.20, "treasure": 0.25, "tide": 0.08, "exp_boost": 0.40}},
     # 新增特殊前缀
-    {"id": "rod_pref_12", "name": "贪婪的", "multiplier": 2.0, "max_slots": 5, "min_level": 5,
+    {"id": "rod_pref_12", "name": "贪婪的", "multiplier": 1.6, "max_slots": 4, "min_level": 5,
      "skills": {"greedy": 1.0}},
-    {"id": "rod_pref_19", "name": "无尽贪婪的", "multiplier": 2.5, "max_slots": 6, "min_level": 7,
+    {"id": "rod_pref_19", "name": "无尽贪婪的", "multiplier": 1.9, "max_slots": 5, "min_level": 7,
      "skills": {"endless_greedy": 1.0}},
-    {"id": "rod_pref_13", "name": "诅咒的", "multiplier": 0.8, "max_slots": 6, "min_level": 5,
+    {"id": "rod_pref_13", "name": "诅咒的", "multiplier": 0.9, "max_slots": 5, "min_level": 5,
      "skills": {"cursed": 1.0}},
-    {"id": "rod_pref_14", "name": "迅捷的", "multiplier": 1.5, "max_slots": 3, "min_level": 4,
-     "skills": {"swift": 0.60, "tide": 0.50, "fail_chance": 0.15}},
-    {"id": "rod_pref_15", "name": "学徒的", "multiplier": 0.9, "max_slots": 2, "min_level": 3,
-     "skills": {"exp_boost": 0.80, "coin_reduce": 0.50}},
-    {"id": "rod_pref_16", "name": "幸运方块的", "multiplier": 1.8, "max_slots": 99, "min_level": 6,
+    {"id": "rod_pref_14", "name": "迅捷的", "multiplier": 1.35, "max_slots": 3, "min_level": 4,
+     "skills": {"swift": 0.45, "tide": 0.20, "fail_chance": 0.18}},
+    {"id": "rod_pref_15", "name": "学徒的", "multiplier": 0.85, "max_slots": 2, "min_level": 3,
+     "skills": {"exp_boost": 0.65, "coin_reduce": 0.35}},
+    {"id": "rod_pref_16", "name": "幸运方块的", "multiplier": 1.4, "max_slots": 6, "min_level": 6,
      "skills": {"lucky_block": 1.0}},
     # 傲慢前缀：仅限金色/神级钓竿；睥睨过滤低稀有度鱼，自负要求鱼饵品质 >= rare
-    {"id": "rod_pref_17", "name": "傲慢的", "multiplier": 2.2, "max_slots": 5, "min_level": 6,
+    {"id": "rod_pref_17", "name": "傲慢的", "multiplier": 1.8, "max_slots": 4, "min_level": 6,
      "skills": {"arrogant": 1.0}},
     # 嫉妒前缀：攀比之力，等级差距带来稀有度加成
-    {"id": "rod_pref_18", "name": "嫉妒的", "multiplier": 2.0, "max_slots": 5, "min_level": 5,
+    {"id": "rod_pref_18", "name": "嫉妒的", "multiplier": 1.7, "max_slots": 4, "min_level": 5,
      "skills": {"jealous": 1.0}},
 ]
+
+# 特殊前缀的风险收益参数。集中配置，避免数值散落在命令流程中。
+SPECIAL_PREFIX_BALANCE = {
+    "cursed": {
+        "enchant_price_multiplier": 0.35,
+        "cursed_fish_chance": 0.12,
+        "skill_loss_chance": 0.08,
+    },
+    "jealous": {
+        "bonus_per_higher_player": 0.08,
+        "max_rarity_bonus": 0.64,
+        "rare_catch_penalty_chance": 0.15,
+        "cooldown_penalty_chance": 0.15,
+        "cooldown_multiplier": 1.20,
+    },
+}
+
+# 这些技能用于标记玩法或表达副作用，不应按数值技能抬高钓竿估值。
+ROD_NON_VALUE_SKILLS = {
+    "greedy", "endless_greedy", "cursed", "lucky_block", "arrogant", "jealous",
+    "fail_chance", "coin_reduce",
+}
 
 # 傲慢前缀可附加的基础钓竿白名单
 ARROGANT_COMPATIBLE_BASES = {"rod_004", "rod_005"}
@@ -316,8 +338,9 @@ def calc_rod_value(base_id: str, prefix_id: str, skills: dict = None) -> int:
     effective_skills = dict(prefix.get("skills", {}))
     if skills is not None:
         effective_skills.update(skills)
-    for val in effective_skills.values():
-        multiplier *= (1 + val)
+    for skill_id, val in effective_skills.items():
+        if skill_id not in ROD_NON_VALUE_SKILLS:
+            multiplier *= (1 + val)
     return int(shop_price * multiplier)
 
 
