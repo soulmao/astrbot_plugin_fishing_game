@@ -20,6 +20,36 @@ wheels/
 .installed.cfg
 *.egg
 
+# Tests and coverage
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+
+# Linters and type checkers
+.mypy_cache/
+.pyright/
+.ruff_cache/
+dmypy.json
+
+# Runtime and local data
+*.log
+*.pid
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary and backup files
+*.tmp
+*.temp
+*.bak
+*.orig
+.cache/
+
 # IDEs
 .vscode/
 .idea/
