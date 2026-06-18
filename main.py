@@ -27,9 +27,10 @@ from .llm_tools import (
 import time
 import asyncio
 import difflib
+from .fuzzy_utils import extract_fuzzy_content, build_fuzzy_candidates
 
 
-@register("fishing_game", "AstrBot", "钓鱼游戏插件 - 群聊娱乐插件，支持钓鱼、背包、商店、赠送等完整经济系统", "V4.4.0")
+@register("fishing_game", "AstrBot", "钓鱼游戏插件 - 群聊娱乐插件，支持钓鱼、背包、商店、赠送等完整经济系统", "V4.5.0")
 class FishingGamePlugin(Star):
     def __init__(self, context: Context, config=None):
         super().__init__(context)
@@ -254,30 +255,37 @@ class FishingGamePlugin(Star):
                 converted.append(arg)
         return converted
 
-    @filter.regex(r"^/(.+)$", priority=1)
+    @filter.regex(r"^[\s\S]+$", priority=1)
     async def cmd_fuzzy_entry(self, event: AstrMessageEvent):
-        '''模糊命令入口 - 识别 /钓一下、/查看背包 等非精确命令变体
+        '''模糊命令入口 - 识别 /钓一下、／查看背包及已剥离前缀的唤醒命令
         
-        优先级设为 1，确保在 LLM 请求之前捕获；命中后调用 stop_event() 阻止事件继续传播。
+        正则需要兼容 AstrBot 不同版本对命令前缀的处理；方法内部会过滤普通聊天。
         '''
         try:
             text = event.message_str.strip()
-            if not text or not text.startswith('/'):
-                return
-            # 去掉唤醒前缀，分离命令词与参数
-            content = text[1:].strip()
+            content = extract_fuzzy_content(event, text)
             if not content:
                 return
-            parts = content.split()
-            command_word = parts[0]
-            # 精确命令已由 @filter.command 处理，此处静默忽略
-            if command_word in self._exact_commands:
+
+            first_word = content.split()[0].lower()
+            # 精确命令已由 @filter.command 处理，此处静默忽略。
+            if first_word in self._exact_commands:
                 return
-            # 模糊匹配
-            matched_cmd, ratio = self._fuzzy_match_command(command_word)
+
+            matched_cmd = None
+            ratio = 0.0
+            command_word = ""
+            raw_args = []
+            for candidate, candidate_args in build_fuzzy_candidates(content):
+                candidate_cmd, candidate_ratio = self._fuzzy_match_command(candidate)
+                if candidate_cmd and candidate_ratio > ratio:
+                    command_word = candidate
+                    matched_cmd = candidate_cmd
+                    ratio = candidate_ratio
+                    raw_args = candidate_args
             if not matched_cmd:
                 return
-            raw_args = parts[1:]
+
             args = self._convert_fuzzy_args(matched_cmd, raw_args)
             logger.info(f"模糊命令匹配: /{command_word} -> {matched_cmd} (相似度 {ratio:.2f}), 参数: {args}")
             async for r in self._route_cmd(event, matched_cmd, *args):
@@ -620,9 +628,18 @@ class FishingGamePlugin(Star):
     # ---------- 管理员系统 ----------
 
     @filter.command("管理", alias={"admin"})
-    async def cmd_admin(self, event: AstrMessageEvent, action: str = "", arg1: str = "", arg2: str = "", arg3: str = "", arg4: str = ""):
+    async def cmd_admin(
+        self, event: AstrMessageEvent, action: str = "", arg1: str = "",
+        arg2: str = "", arg3: str = "", arg4: str = "", arg5: str = "",
+        arg6: str = "", arg7: str = "", arg8: str = "", arg9: str = "",
+        arg10: str = "", arg11: str = "", arg12: str = "", arg13: str = "",
+        arg14: str = "",
+    ):
         '''管理 - 管理员命令入口'''
-        async for r in self._route_cmd(event, 'cmd_admin', action, arg1, arg2, arg3, arg4): yield r
+        async for r in self._route_cmd(
+            event, 'cmd_admin', action, arg1, arg2, arg3, arg4, arg5, arg6,
+            arg7, arg8, arg9, arg10, arg11, arg12, arg13, arg14,
+        ): yield r
 
     # ---------- 生命周期 ----------
 

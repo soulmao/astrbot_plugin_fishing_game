@@ -39,8 +39,10 @@ def format_rod_name(rod: dict, with_value: bool = False) -> str:
     base = get_rod_by_id(rod["base_id"])
     prefix = get_rod_prefix(rod["prefix_id"])
     name = "木制钓竿"
-    if base and prefix:
-        name = f"{prefix['name']}{base['name']}"
+    if base:
+        name = base["name"]
+        if prefix:
+            name = f"{prefix['name']}{name}"
     if with_value:
         value = calc_rod_value(
             rod.get("base_id", ""), rod.get("prefix_id", ""), rod.get("skills")

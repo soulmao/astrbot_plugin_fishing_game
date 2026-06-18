@@ -143,6 +143,23 @@ SPECIAL_PREFIX_BALANCE = {
         "cooldown_penalty_chance": 0.15,
         "cooldown_multiplier": 1.20,
     },
+    "lucky_block": {
+        "gain_chance": 0.50,
+        "lose_chance": 0.35,
+        "new_skill_min": 0.12,
+        "new_skill_max": 0.22,
+        "upgrade_min": 0.01,
+        "upgrade_max": 0.02,
+        "skill_value_cap": 0.25,
+    },
+}
+
+# 无前缀特种钓竿的独立平衡参数。
+SPECIAL_ROD_BALANCE = {
+    "gold_rod": {
+        "cast_cost": 10,
+        "treasure_chance": 0.15,
+    },
 }
 
 # 这些技能用于标记玩法或表达副作用，不应按数值技能抬高钓竿估值。

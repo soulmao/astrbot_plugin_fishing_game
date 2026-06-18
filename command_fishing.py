@@ -13,7 +13,7 @@ from .fish_data import (
     ENCHANT_TICKETS, ENCHANT_CONFIG,
     calc_rod_value, calc_bait_value, calc_fish_value,
     get_rod_prefix, get_bait_prefix, scramble_text, add_pig_noise,
-    SPECIAL_PREFIX_BALANCE,
+    SPECIAL_PREFIX_BALANCE, SPECIAL_ROD_BALANCE,
 )
 from .storage import StorageManager
 import random
@@ -25,24 +25,33 @@ GREEDY_CONFIG = {
     "normal": {
         "name": "贪婪的",
         "initial_bait_cost": 2,
+        # 即使首层立刻收杆也应覆盖额外鱼饵与冷却成本，避免玩家被迫继续冒险。
+        "initial_reward_multiplier": 1.20,
         "base_break_chance": 0.15,
         "break_increment_per_stack": 0.12,
         "extra_break_per_extra_fish": 0.06,
         "base_rarity_bonus": 0.20,
         "rarity_bonus_per_stack": 0.08,
-        # 累计倍率保持诱人，但避免旧曲线在少数层数内制造数十倍通胀。
-        "price_multipliers": [1.25, 1.65, 2.15, 2.75, 3.45, 4.25, 5.15, 6.15, 7.25, 8.45],
+        # 后续层数适度提高收益，用高断线风险换取更明确的回报。
+        "price_multipliers": [1.55, 2.05, 2.65, 3.35, 4.15, 5.05, 6.05, 7.15, 8.35, 9.65],
+        "repair_wallet_rate": 0.02,
+        "repair_chip_rate": 0.10,
+        "break_extra_fish_cap": 3,
         "cd_penalty": 0.15,
     },
     "endless": {
         "name": "无尽贪婪的",
         "initial_bait_cost": 3,
+        "initial_reward_multiplier": 1.40,
         "base_break_chance": 0.22,
         "break_increment_per_stack": 0.14,
         "extra_break_per_extra_fish": 0.08,
         "base_rarity_bonus": 0.30,
         "rarity_bonus_per_stack": 0.10,
-        "price_multipliers": [1.5, 2.1, 2.9, 3.9, 5.1, 6.5, 8.1, 9.9, 11.9, 14.1],
+        "price_multipliers": [1.90, 2.70, 3.70, 4.90, 6.30, 7.90, 9.70, 11.70, 13.90, 16.30],
+        "repair_wallet_rate": 0.02,
+        "repair_chip_rate": 0.10,
+        "break_extra_fish_cap": 3,
         "cd_penalty": 0.30,
     },
 }
@@ -109,6 +118,13 @@ class FishingCommands(CommandBase):
             lucky_block_val = skills.get("lucky_block", 0)
             arrogant_val = skills.get("arrogant", 0)
             jealous_val = skills.get("jealous", 0)
+
+            # 金币钓竿自带寻宝，固定成本下仍保留鲜明的金币收益定位。
+            if is_gold_rod:
+                treasure_val = max(
+                    treasure_val,
+                    SPECIAL_ROD_BALANCE["gold_rod"]["treasure_chance"],
+                )
             
             # 判定是否进入贪婪/无尽贪婪模式（无尽贪婪优先）
             greedy_mode = None
@@ -124,10 +140,10 @@ class FishingCommands(CommandBase):
             # 检查资源
             selected_bait = None
             if is_gold_rod:
-                # 金币钓竿：消耗当前金币10%
-                gold_cost = int(user.coins * 0.10)
-                if user.coins < 100:
-                    return "金币不足100，无法使用金币钓竿！"
+                # 金币钓竿改为固定成本，避免资产越多亏损越严重。
+                gold_cost = self._calc_gold_rod_cast_cost()
+                if user.coins < gold_cost:
+                    return f"金币不足{gold_cost}，无法使用金币钓竿！"
                 user.remove_coins(gold_cost)
             elif not is_carrot_rod:
                 # 普通钓竿：检查鱼饵
@@ -202,8 +218,8 @@ class FishingCommands(CommandBase):
             if greedy_mode:
                 return await self._handle_greedy_start(
                     event, user, rod, selected_bait, greedy_mode,
-                    base_count, jealous_bonus, lucky_events["free_bait"],
-                    checkin_msg
+                    base_count, jealous_bonus, lucky_events,
+                    skills, checkin_msg
                 )
 
             # 非贪婪模式：原流程继续
@@ -388,18 +404,33 @@ class FishingCommands(CommandBase):
             # 幸运方块：随机添加或消除词条
             lucky_block_msgs = []
             if lucky_block_val > 0:
-                if random.random() < 0.5:
+                lucky_cfg = SPECIAL_PREFIX_BALANCE["lucky_block"]
+                lucky_roll = random.random()
+                if lucky_roll < lucky_cfg["gain_chance"]:
                     # 添加新技能
                     current_skills = dict(rod.get("skills", {}))
                     available_skills = [s for s in get_available_skills() if s not in current_skills and s not in rod_prefix.get("skills", {})]
                     max_slots = rod_prefix.get("max_slots", 0)
                     if available_skills and len(current_skills) < max_slots:
                         new_skill = random.choice(available_skills)
-                        new_val = round(random.uniform(0.10, 0.20), 2)
+                        new_val = round(random.uniform(
+                            lucky_cfg["new_skill_min"], lucky_cfg["new_skill_max"]
+                        ), 2)
                         current_skills[new_skill] = new_val
                         user.update_rod_skills(rod["instance_id"], rod.get("enchant_count", 0), current_skills)
                         lucky_block_msgs.append(f"🎲 幸运方块！获得 {ROD_SKILL_DESCRIPTIONS.get(new_skill, new_skill)}+{int(new_val*100)}%")
-                else:
+                    elif current_skills:
+                        # 满槽时不浪费正面结果，随机强化一个已有词条。
+                        upgraded = random.choice(list(current_skills.keys()))
+                        old_val = current_skills[upgraded]
+                        increase = random.uniform(lucky_cfg["upgrade_min"], lucky_cfg["upgrade_max"])
+                        new_val = round(min(old_val + increase, lucky_cfg["skill_value_cap"]), 2)
+                        current_skills[upgraded] = new_val
+                        user.update_rod_skills(rod["instance_id"], rod.get("enchant_count", 0), current_skills)
+                        lucky_block_msgs.append(
+                            f"🎲 幸运方块！{ROD_SKILL_DESCRIPTIONS.get(upgraded, upgraded)}强化至+{int(new_val*100)}%"
+                        )
+                elif lucky_roll >= 1 - lucky_cfg["lose_chance"]:
                     # 消除一个非幸运方块词条
                     current_skills = dict(rod.get("skills", {}))
                     removable = [k for k in current_skills.keys() if k != "lucky_block"]
@@ -589,7 +620,7 @@ class FishingCommands(CommandBase):
             if fish["rarity"] == "mythic" and rod["base_id"] not in ["rod_004", "rod_005"]:
                 continue
             # 傲慢的钓竿睥睨：保底稀有，但不再直接保底传说，避免收益断层。
-            if rod_prefix.get("skills", {}).get("arrogant") and fish["rarity"] == "common":
+            if effective_skills.get("arrogant") and fish["rarity"] == "common":
                 continue
             if fish["rarity"] in ("rare", "legendary", "mythic"):
                 weight = fish["weight"] * (1 + rod_rarity_bonus + bait_quality_bonus)
@@ -619,7 +650,7 @@ class FishingCommands(CommandBase):
         selected_prefix = random.choices([p for p, _ in prefix_pool], weights=[w for _, w in prefix_pool], k=1)[0]
         
         # 诅咒钓竿专属：10% 概率钓到"被诅咒的"鱼
-        if rod_prefix.get("skills", {}).get("cursed") and random.random() < SPECIAL_PREFIX_BALANCE["cursed"]["cursed_fish_chance"]:
+        if effective_skills.get("cursed") and random.random() < SPECIAL_PREFIX_BALANCE["cursed"]["cursed_fish_chance"]:
             cursed_prefix = get_prefix_by_id("pref_015")
             if cursed_prefix:
                 selected_prefix = cursed_prefix
@@ -643,13 +674,15 @@ class FishingCommands(CommandBase):
         }
 
     async def _handle_greedy_start(self, event, user, rod, selected_bait, greedy_mode: str,
-                                   base_count: int, jealous_bonus: float, free_bait: bool,
+                                   base_count: int, jealous_bonus: float,
+                                   lucky_events: dict, skills: dict,
                                    checkin_msg: str) -> str:
-        """贪婪模式首次钓鱼：消耗激活鱼饵、钓取 base_count 条鱼并进入挂起状态"""
+        """贪婪模式首次钓鱼：所有附魔词条仅在本次激活阶段生效。"""
         cfg = GREEDY_CONFIG[greedy_mode]
         activation_cost = cfg["initial_bait_cost"]
         is_gold_rod = rod["base_id"] == "rod_006"
         is_carrot_rod = rod["base_id"] == "rod_007"
+        free_bait = lucky_events.get("free_bait", False)
 
         # 扣除激活鱼饵
         if not is_gold_rod and not is_carrot_rod and not free_bait:
@@ -657,21 +690,91 @@ class FishingCommands(CommandBase):
                 return "鱼饵消耗失败，请检查背包！"
 
         fish_results = []
-        for _ in range(base_count):
+
+        def catch_once() -> bool:
+            """钓取一条鱼并记录到贪欲结晶的原始渔获。"""
             result = self._do_fish_once(user, rod, selected_bait, jealous_bonus=jealous_bonus)
             if result is None:
-                await self.storage.save_user(user)
-                return "👑 当前等级过低，傲慢的钓竿无法锁定稀有以上渔获，请提升等级后再试！"
+                return False
             fish_results.append(result)
-            # 统计与图鉴即时记录（渔获不进入背包，而是聚合为结晶）
             user.increment_fish_count()
             user.add_rarity_count(result["rarity"])
             user.add_to_collection(result["fish_id"], result["prefix_id"])
+            return True
+
+        for _ in range(base_count):
+            if not catch_once():
+                await self.storage.save_user(user)
+                return "👑 当前等级过低，傲慢的钓竿无法锁定稀有以上渔获，请提升等级后再试！"
+
+        event_msgs = []
+
+        # 丰收只在首次激活时判定一次，额外渔获由激活成本覆盖。
+        if random.random() < skills.get("harvest", 0):
+            for _ in range(base_count):
+                catch_once()
+            event_msgs.append("🌾 丰收触发！")
+
+        # 远航只在首次激活时判定，后续贪婪层不再重复触发。
+        voyage_extra_cd = 0
+        if random.random() < skills.get("voyage", 0):
+            current_exp = sum(r["exp"] for r in fish_results)
+            voyage_count = min(current_exp // 20, 50)
+            if voyage_count > 0:
+                voyage_extra_cd = voyage_count * (self.star.fishing_cooldown // 13)
+                for _ in range(voyage_count * base_count):
+                    catch_once()
+                event_msgs.append(f"🧭 远航触发！额外{voyage_count * base_count}次")
 
         chip = self._build_greedy_chip(fish_results)
+        # 首层同样享受收益倍率，确保立即收杆也有合理回报。
+        initial_reward_multiplier = cfg["initial_reward_multiplier"]
+        chip["total_price"] = int(chip["total_price"] * initial_reward_multiplier)
+        chip["total_exp"] = int(chip["total_exp"] * initial_reward_multiplier)
+
+        # 神慧和经验修补仅处理首次形成的结晶，不作用于后续新增渔获。
+        exp_boost = skills.get("exp_boost", 0)
+        if exp_boost > 0:
+            chip["total_exp"] = int(chip["total_exp"] * (1 + exp_boost))
+            event_msgs.append(f"🧠 神慧生效！首次经验 +{int(exp_boost * 100)}%")
+        if skills.get("mending", 0) > 0 and random.random() < skills["mending"]:
+            mending_gold = int(chip["total_exp"] * 0.5)
+            chip["total_exp"] -= mending_gold
+            chip["total_price"] += mending_gold
+            event_msgs.append(f"🔧 经验修补：{mending_gold} 经验转入结晶价值")
+
+        # 寻宝奖励并入结晶，只有成功收杆后才能兑现。
+        treasure_val = skills.get("treasure", 0)
+        if treasure_val > 0 and random.random() < treasure_val:
+            treasure_gold = random.randint(
+                int(50 + treasure_val * 200),
+                int(150 + treasure_val * 500),
+            )
+            chip["total_price"] += treasure_gold
+            event_msgs.append(f"💎 寻宝发现：结晶价值 +{treasure_gold}")
+
+        # 幸运的额外道具奖励也只在首次激活时判定。
+        if lucky_events.get("bonus_bait"):
+            bait_base_id, bait_prefix_id, bait_count, bait_name = self._generate_random_bait()
+            user.add_bait(bait_base_id, bait_prefix_id, bait_count)
+            event_msgs.append(f"🎁 幸运奖励：获得 {bait_name} x{bait_count}！")
+        if lucky_events.get("bonus_rod"):
+            rod_base_id, rod_prefix_id, rod_name = self._generate_random_rod()
+            user.add_rod(rod_base_id, rod_prefix_id)
+            event_msgs.append(f"🎁 超级幸运：获得 {rod_name}！")
+
+        tide_triggered = skills.get("tide", 0) > 0 and random.random() < skills["tide"]
+        if tide_triggered:
+            event_msgs.append("🌊 潮汐触发！本轮贪婪结束后免冷却")
+
+        effects = {
+            "swift": skills.get("swift", 0),
+            "tide_triggered": tide_triggered,
+            "voyage_extra_cd": voyage_extra_cd,
+        }
         user.start_greedy(
             rod["instance_id"], rod["prefix_id"],
-            selected_bait or {}, chip, activation_cost
+            selected_bait or {}, chip, activation_cost, effects
         )
 
         # 成就检查（可能触发首次钓鱼等）
@@ -689,7 +792,6 @@ class FishingCommands(CommandBase):
             result_lines.append(checkin_msg)
             result_lines.append("")
         result_lines.append("🎣 钓鱼成功！")
-        event_msgs = []
         if free_bait:
             event_msgs.append("✨ 本次钓鱼不消耗鱼饵！")
         if base_count > 1:
@@ -742,9 +844,9 @@ class FishingCommands(CommandBase):
         }
 
     def _get_greedy_total_multiplier(self, stack: int, mode: str) -> float:
-        """获取贪婪第 stack 层的累计售价倍率（stack=1 为初始 1.0x）"""
+        """获取贪婪第 stack 层的累计收益倍率。"""
         if stack <= 1:
-            return 1.0
+            return GREEDY_CONFIG[mode]["initial_reward_multiplier"]
         cfg = GREEDY_CONFIG[mode]
         multipliers = cfg["price_multipliers"]
         idx = stack - 2
@@ -767,8 +869,33 @@ class FishingCommands(CommandBase):
         """计算断线概率，stack 为当前层数（至少 1）"""
         cfg = GREEDY_CONFIG[mode]
         chance = cfg["base_break_chance"] + (stack - 1) * cfg["break_increment_per_stack"]
-        chance += max(0, fish_count - 1) * cfg["extra_break_per_extra_fish"]
+        counted_fish = min(max(1, fish_count), cfg["break_extra_fish_cap"])
+        chance += max(0, counted_fish - 1) * cfg["extra_break_per_extra_fish"]
         return min(chance, 0.95)
+
+    def _calc_greedy_repair_cost(self, coins: int, chip_value: int, mode: str) -> int:
+        """计算断线修理费，按钱包比例收取，但不超过结晶价值上限。"""
+        cfg = GREEDY_CONFIG[mode]
+        wallet_cost = int(max(0, coins) * cfg["repair_wallet_rate"])
+        chip_cap = int(max(0, chip_value) * cfg["repair_chip_rate"])
+        return min(wallet_cost, chip_cap)
+
+    def _calc_gold_rod_cast_cost(self) -> int:
+        """返回金币钓竿每次抛竿的固定金币成本。"""
+        return SPECIAL_ROD_BALANCE["gold_rod"]["cast_cost"]
+
+    def _get_greedy_effective_cooldown(self, state: dict, mode: str) -> int:
+        """计算贪婪结束冷却，并兑现首次触发的迅捷、潮汐和远航效果。"""
+        effects = state.get("effects", {}) or {}
+        if effects.get("tide_triggered", False):
+            return 0
+        swift = min(max(float(effects.get("swift", 0)), 0.0), 1.0)
+        base_cooldown = int(
+            self.star.fishing_cooldown
+            * (1 - swift)
+            * (1 + GREEDY_CONFIG[mode]["cd_penalty"])
+        )
+        return max(0, base_cooldown + int(effects.get("voyage_extra_cd", 0)))
 
     async def cmd_greedy_continue(self, event) -> str:
         """贪婪继续命令 - 用贪欲结晶再次抛竿，可能断线爆仓或价值暴涨"""
@@ -787,10 +914,12 @@ class FishingCommands(CommandBase):
             # 断线判定
             break_chance = self._calc_greedy_break_chance(stack, chip["fish_count"], mode)
             if random.random() < break_chance:
-                repair_cost = int(user.coins * 0.10)
+                repair_cost = self._calc_greedy_repair_cost(
+                    user.coins, chip.get("total_price", 0), mode
+                )
                 user.remove_coins(repair_cost)
                 user.clear_greedy()
-                effective_cooldown = int(self.star.fishing_cooldown * (1 + cfg["cd_penalty"]))
+                effective_cooldown = self._get_greedy_effective_cooldown(state, mode)
                 user.set_fishing_cooldown(effective_cooldown)
                 new_achievements = user.check_achievements()
                 await self.storage.save_user(user)
@@ -818,13 +947,11 @@ class FishingCommands(CommandBase):
             if rod.get("instance_id") != state["rod_instance_id"]:
                 return "❌ 你更换了触发贪婪的钓竿，当前挂起状态已冻结，请 /收杆 结算。"
 
-            # 嫉妒技能在继续贪婪时仍然生效
-            jealous_bonus = await self._calc_jealous_bonus(user)
-
             selected_bait = state.get("initial_bait") or None
             result = self._do_fish_once(
                 user, rod, selected_bait,
-                jealous_bonus=jealous_bonus,
+                # 所有非贪婪词条只在首次激活时生效，后续层不再获得嫉妒加成。
+                jealous_bonus=0.0,
                 extra_rarity_bonus=extra_rarity,
                 price_multiplier=1.0
             )
@@ -895,7 +1022,7 @@ class FishingCommands(CommandBase):
             leveled_up, new_level = user.add_exp(final_exp)
             user.clear_greedy()
 
-            effective_cooldown = int(self.star.fishing_cooldown * (1 + cfg["cd_penalty"]))
+            effective_cooldown = self._get_greedy_effective_cooldown(state, mode)
             user.set_fishing_cooldown(effective_cooldown)
 
             new_achievements = user.check_achievements()
@@ -909,7 +1036,7 @@ class FishingCommands(CommandBase):
                 f"🧿 结算层数: {stack}",
                 f"💰 +{final_coins} 金币",
                 f"📈 +{final_exp} 经验",
-                f"⏰ 冷却 {format_time(effective_cooldown)}",
+                "⏰ 冷却 无" if effective_cooldown == 0 else f"⏰ 冷却 {format_time(effective_cooldown)}",
             ]
             result = "\n".join(result_lines)
             if leveled_up:

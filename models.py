@@ -666,7 +666,7 @@ class UserData:
         return bool(state and state.get("active"))
 
     def start_greedy(self, rod_instance_id: str, rod_prefix_id: str, initial_bait: Dict,
-                     chip: Dict, bait_cost_total: int) -> None:
+                     chip: Dict, bait_cost_total: int, effects: Optional[Dict] = None) -> None:
         """启动一次贪婪挂起状态"""
         self._data["greedy_state"] = {
             "active": True,
@@ -676,6 +676,8 @@ class UserData:
             "initial_bait": dict(initial_bait),
             "bait_cost_total": bait_cost_total,
             "chip": dict(chip),
+            # 保存首次抛竿触发、但需要在最终结算时兑现的词条效果。
+            "effects": dict(effects or {}),
         }
 
     def update_greedy_chip(self, chip: Dict, bait_cost_delta: int = 0, stack_delta: int = 1) -> bool:
