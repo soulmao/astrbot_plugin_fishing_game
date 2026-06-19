@@ -448,7 +448,7 @@ class FishingAuctionTool(FunctionTool[AstrAgentContext]):
             },
             "price": {
                 "type": "number",
-                "description": "上架价格（可选，不传则使用默认价格）"
+                "description": "仅用于listing的自定义上架价格（可选，须在系统允许范围内）；sell固定按系统回收价结算，请勿传入"
             }
         },
         "required": ["action"]
@@ -470,7 +470,7 @@ class FishingAuctionTool(FunctionTool[AstrAgentContext]):
                 args.append(item_type)
             if keyword_or_id:
                 args.append(keyword_or_id)
-            if price is not None:
+            if action == "listing" and price is not None:
                 args.append(str(price))
         elif action in ("buy", "cancel"):
             if keyword_or_id:
@@ -626,7 +626,7 @@ class FishingGreedyContinueTool(FunctionTool[AstrAgentContext]):
     description: str = (
         "继续当前的贪婪/无尽贪婪挂起状态。用已生成的【贪欲结晶】作为特殊鱼饵再次抛竿，"
         "有概率获得更高倍率的奖励，也有概率断线爆仓（失去所有结晶并扣除 10% 当前金币修理费）。"
-        "当用户说继续贪婪、再赌一把、贪婪时说调用。"
+        "当用户说继续贪婪、再赌一把或继续挑战时调用。"
     )
     parameters: dict = Field(default_factory=lambda: {
         "type": "object",

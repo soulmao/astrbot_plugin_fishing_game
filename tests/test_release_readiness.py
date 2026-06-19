@@ -49,6 +49,20 @@ class ReleaseReadinessTests(unittest.TestCase):
         self.assertIn("docs/*preview*.html", gitignore)
         self.assertIn("docs/*preview*.png", gitignore)
 
+    def test_docs_match_current_test_and_market_layout(self):
+        agents = _read("AGENTS.md")
+        readme = _read("README.md")
+        self.assertIn("101 个 `unittest` 用例", agents)
+        self.assertNotIn("当前项目没有单元测试", agents)
+        self.assertIn("`main.py` | 840", agents)
+        self.assertIn("商店按四列", readme)
+        self.assertIn("拍卖行按三列", readme)
+
+    def test_llm_auction_price_and_greedy_descriptions_are_unambiguous(self):
+        tools = _read("llm_tools.py")
+        self.assertIn('if action == "listing" and price is not None:', tools)
+        self.assertNotIn("贪婪时说调用", tools)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

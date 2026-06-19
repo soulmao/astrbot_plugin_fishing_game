@@ -38,11 +38,11 @@
 - 数据持久化：基于 AstrBot 的 K-V 存储（`star.get_kv_data` / `star.put_kv_data`）。
 - 并发安全：每个用户独立 `asyncio.Lock`，赠送与拍卖购买场景按 user_id 排序加锁防止死锁。
 - 定时任务：每日 0 点重置用户赠送次数，每小时检查拍卖行过期物品。
-- 模糊命令入口：通过 `@filter.regex(r"^/(.+)$", priority=1)` 兜底识别 `/钓一下`、`/查看背包` 等口语化变体。
+- 模糊命令入口：通过 `@filter.regex(r"^[\s\S]+$", priority=1)` 建立兼容入口，再由 `extract_fuzzy_content()` 严格过滤普通聊天，识别半角/全角斜杠及框架已剥离前缀的唤醒命令。
 - 特殊文本效果：装备"无尽贪婪的"前缀钓竿时，返回文本会随金币增加受到黑色方块侵蚀；装备"胡萝卜钓竿"时文本会随机插入猪叫声。
 - 游戏结果图片：精确命令、模糊命令和调用过本插件 FunctionTool 的最终 LLM 回复都会图片化，失败时回退文本。
 - 背包图片：使用专用结构化模板，包含经验进度条、钓竿技能卡片，以及按库存总价值降序、最多六十种的标签式渔获展示。
-- 市场图片：商店使用三列商品卡，拍卖行使用两列交易卡；列表和搜索结果保留价格、卖家、剩余时间与操作编号。
+- 市场图片：商店使用四列分类配色商品卡，拍卖行使用三列交易卡；列表和搜索结果保留价格、卖家、剩余时间与操作编号。
 - 收藏图片：“我的鱼饵”完整展示效果与当前装备，图鉴展示稀有度进度和最近点亮，成就按类别完整展示全部目标。
 - 钓鱼图片：普通钓鱼、贪婪挑战、收杆结算及失败状态使用专用结构化模板。
 
@@ -135,22 +135,28 @@
 | 文件 | 行数（约） | 职责 |
 |------|-----------|------|
 | `__init__.py` | 4 | Python 包入口，导出 `FishingGamePlugin` |
-| `main.py` | 604 | 插件生命周期、命令路由、LLM 工具注册、定时任务、模糊命令入口 |
-| `commands_base.py` | 18 | `CommandBase` 基类，提供用户级锁 |
-| `command_fishing.py` | 548 | 钓鱼核心（随机算法、技能特效、幸运事件、签到） |
-| `command_equipment.py` | 124 | 钓竿/鱼饵的查看与装备切换 |
-| `command_economy.py` | 239 | 卖鱼、商店、购买、刷新商店、商店升级 |
-| `command_social.py` | 226 | 赠送金币/渔获/鱼饵/钓竿，含事务回滚 |
-| `command_auction.py` | 558 | 拍卖行浏览/搜索/上架/出售/取消/购买（支持钓竿/鱼饵/渔获/附魔券/道具券） |
-| `command_enchant.py` | 285 | 随机附魔、技能升级、定向附魔 |
+| `main.py` | 840 | 插件生命周期、命令路由、LLM 工具注册、定时任务、模糊命令入口、图片结果装饰 |
+| `commands_base.py` | 14 | `CommandBase` 基类，提供用户级锁 |
+| `command_fishing.py` | 1072 | 钓鱼核心（随机算法、技能特效、幸运事件、签到、贪婪模式） |
+| `command_equipment.py` | 132 | 钓竿/鱼饵的查看与装备切换 |
+| `command_economy.py` | 241 | 卖鱼、商店、购买、刷新商店、商店升级 |
+| `command_social.py` | 228 | 赠送金币/渔获/鱼饵/钓竿，含事务回滚 |
+| `command_auction.py` | 565 | 拍卖行浏览/搜索/上架/出售/取消/购买（支持钓竿/鱼饵/渔获/附魔券/道具券） |
+| `command_enchant.py` | 352 | 随机附魔、技能升级、定向附魔 |
 | `command_achievements.py` | 57 | 成就列表与进度查询 |
-| `command_info.py` | 420 | 帮助、背包、等级、图鉴、冷却、排行榜 |
-| `command_admin.py` | 492 | 管理员查看/加金币/设经验/加钓竿/全服发放/日志审计 |
-| `fish_data.py` | 456 | 所有静态游戏数据与查询/计算函数 |
-| `models.py` | 648 | `UserData` 数据模型（属性访问器、业务方法、数据迁移） |
-| `storage.py` | 170 | `StorageManager` K-V 持久化、排行榜、拍卖行数据 |
-| `utils.py` | 346 | 格式化、价值计算、商店生成、加权随机等纯工具函数 |
+| `command_info.py` | 439 | 帮助、背包、等级、图鉴、冷却、排行榜 |
+| `command_admin.py` | 648 | 管理员查看/加金币/设经验/加钓竿/全服发放/日志审计 |
+| `fish_data.py` | 514 | 所有静态游戏数据与查询/计算函数 |
+| `models.py` | 713 | `UserData` 数据模型（属性访问器、业务方法、数据迁移） |
+| `storage.py` | 214 | `StorageManager` K-V 持久化、排行榜、拍卖行数据 |
+| `utils.py` | 370 | 格式化、价值计算、商店生成、加权随机等纯工具函数 |
 | `llm_tools.py` | 660 | 25 个 FunctionTool 的 dataclass 定义 |
+| `fuzzy_utils.py` | 50 | 模糊命令文本规范化、候选词与参数拆分 |
+| `backpack_renderer.py` | 444 | 背包与钓竿结构化图片模板 |
+| `market_renderer.py` | 195 | 商店与拍卖行结构化图片模板 |
+| `gallery_renderer.py` | 284 | 鱼饵、图鉴与成就结构化图片模板 |
+| `fishing_renderer.py` | 300 | 普通钓鱼、贪婪与失败状态图片模板 |
+| `result_renderer.py` | 245 | 通用文本结果图片模板与 T2I 故障识别 |
 | `fish_data_admin.html` | - | 独立 HTML 数据管理台（静态文件，未在代码中引用） |
 | `_conf_schema.json` | 44 | 插件配置 Schema |
 | `metadata.yaml` | 6 | AstrBot 插件元数据 |
@@ -245,37 +251,53 @@ self.admin_uids = set(uid.strip() for uid in admin_uids_str.split(",") if uid.st
 
 ### 5.2 本地验证
 
-由于没有单元测试，验证方式主要为：
+项目已有 `unittest` 测试套件，本地验证方式为：
 
-1. **语法检查**:
+1. **快速回归（推荐）**：
+   ```bash
+   python C:\Users\12463\.codex\skills\fishing-game-test\scripts\run_project_tests.py --project . --mode quick
+   ```
+
+2. **直接运行单元测试**：
+   ```bash
+   python -m unittest discover -s tests -q
+   ```
+
+3. **语法检查**:
    ```bash
    python -m py_compile __init__.py main.py commands_base.py command_*.py fish_data.py models.py storage.py utils.py llm_tools.py
    ```
 
-2. **导入检查**（需要在安装了 AstrBot 和 pydantic 的环境中）：
+4. **导入检查**（需要在安装了 AstrBot 和 pydantic 的环境中）：
    ```bash
    python -c "from .main import FishingGamePlugin"
    ```
 
-3. **实际运行验证**: 将插件放入 AstrBot 的 `plugins/` 目录，启动 AstrBot，在群聊中测试命令。
+5. **实际运行验证**: 将插件放入 AstrBot 的 `plugins/` 目录，启动 AstrBot，在群聊中测试命令及图片渲染。
 
 ### 5.3 测试策略
 
-**当前项目没有单元测试、集成测试或 CI/CD 配置。**
+项目当前有 11 个 `test_*.py` 文件、101 个 `unittest` 用例，覆盖数据模型、管理员命令、用户锁、模糊命令、贪婪机制、稳定性、发布一致性及各结构化图片模板。当前仍没有独立的 AstrBot 集成测试和 CI/CD 配置。
 
-建议新增测试时遵循以下原则：
+新增测试时遵循以下原则：
 
-- 由于项目强依赖 AstrBot 框架，单元测试需要大量 mock `Context`、`AstrMessageEvent`、`Star.get_kv_data`/`put_kv_data` 等接口。
+- 对 AstrBot 依赖使用轻量模块桩或 mock `Context`、`AstrMessageEvent`、`Star.get_kv_data`/`put_kv_data` 等接口。
 - 优先对纯工具函数（`utils.py`、`fish_data.py` 中的计算函数）进行单元测试，这些函数无外部依赖。
-- 对命令逻辑的测试建议使用 pytest + unittest.mock 模拟 event 和 storage。
-- 推荐测试目录结构：
+- 对命令逻辑使用 `unittest` + `unittest.mock` 模拟 event 和 storage。
+- 当前测试目录结构：
   ```
   tests/
-  ├── __init__.py
-  ├── test_utils.py
-  ├── test_fish_data.py
-  ├── test_models.py
-  └── test_commands.py
+  ├── test_admin_commands.py
+  ├── test_backpack_renderer.py
+  ├── test_fishing_renderer.py
+  ├── test_fuzzy_commands.py
+  ├── test_gallery_renderer.py
+  ├── test_greedy.py
+  ├── test_market_renderer.py
+  ├── test_release_readiness.py
+  ├── test_result_renderer.py
+  ├── test_shared_user_locks.py
+  └── test_stability.py
   ```
 
 ---
@@ -381,9 +403,9 @@ self.admin_uids = set(uid.strip() for uid in admin_uids_str.split(",") if uid.st
 
 ## 10. 注意事项
 
-- 本项目**没有测试套件**，修改后请通过实际运行或至少语法检查验证。
+- 本项目已有 `unittest` 测试套件，修改后至少运行 `quick` 模式；涉及数值平衡时运行 `all` 模式。
 - 本项目**没有 CI/CD 流程**。
 - `.gitignore` 已存在，包含 Python、IDE、环境、OS 常见忽略项。
 - `fish_data_admin.html` 是独立的静态 HTML 管理台，当前代码中未引用，修改前端数据展示时可以单独维护。
 - 不要修改 `__pycache__` 中的文件，那是 Python 编译缓存。
-- `main.py` 与 `metadata.yaml`/`plugin.json` 中的版本号不一致，发布前建议统一。
+- 发布前运行 `tests/test_release_readiness.py`，确认 `main.py`、`metadata.yaml`、`plugin.json` 与 README 版本信息一致。

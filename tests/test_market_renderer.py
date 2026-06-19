@@ -123,8 +123,12 @@ class MarketRendererTests(unittest.TestCase):
         self.assertEqual(skills["🌾丰收"], "20%")
 
     def test_templates_use_cards_without_bracket_ids(self):
-        self.assertIn("grid-template-columns:repeat(3", renderer.SHOP_IMAGE_TEMPLATE)
-        self.assertIn("grid-template-columns:repeat(2", renderer.AUCTION_IMAGE_TEMPLATE)
+        self.assertIn("grid-template-columns:repeat(4", renderer.SHOP_IMAGE_TEMPLATE)
+        self.assertIn("grid-template-columns:repeat(3", renderer.AUCTION_IMAGE_TEMPLATE)
+        self.assertIn('data-icon="{{ item.icon }}"', renderer.SHOP_IMAGE_TEMPLATE)
+        self.assertIn("backdrop-filter:blur(12px)", renderer.SHOP_IMAGE_TEMPLATE)
+        self.assertIn("card.type-bait", renderer.SHOP_IMAGE_TEMPLATE)
+        self.assertIn("card.type-directed_enchant", renderer.SHOP_IMAGE_TEMPLATE)
         self.assertIn("编号 {{ item.id }}", renderer.AUCTION_IMAGE_TEMPLATE)
         self.assertNotIn("[{{ item.id }}]", renderer.AUCTION_IMAGE_TEMPLATE)
         self.assertIn("金币不足", renderer.SHOP_IMAGE_TEMPLATE)

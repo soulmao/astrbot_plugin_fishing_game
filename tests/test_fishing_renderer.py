@@ -110,10 +110,18 @@ class FishingRendererTests(unittest.TestCase):
 
         warning = renderer.build_fishing_result_view("钓鱼冷却中，剩余 12分钟", "玩家")
         self.assertEqual(warning["kind"], "warning")
+        self.assertEqual(warning["title"], "钓鱼冷却中")
+        self.assertEqual(warning["subtitle"], "剩余 12分钟")
 
     def test_template_has_dedicated_fish_and_stat_cards(self):
         template = renderer.FISHING_IMAGE_TEMPLATE
         self.assertIn("fish-grid", template)
+        self.assertIn("fish-grid.dense", template)
+        self.assertIn("fishes|length <= 4", template)
+        self.assertIn("body.greedy .stats", template)
+        self.assertIn("font-size: 40px", template)
+        self.assertIn("kind != 'warning'", template)
+        self.assertIn("body.warning .subtitle", template)
         self.assertIn("stat-value", template)
         self.assertIn("hidden_fishes", template)
 
