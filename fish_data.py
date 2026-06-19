@@ -84,8 +84,10 @@ ROD_BASES = [
     {"id": "rod_004", "name": "金色钓竿", "quality": "legendary", "exp_multiplier": 2.0, "rarity_bonus": 0.20},
     {"id": "rod_005", "name": "神级钓竿", "quality": "mythic", "exp_multiplier": 3.0, "rarity_bonus": 0.35},
     # 特种钓竿（不能带前缀）
-    {"id": "rod_006", "name": "金币钓竿", "quality": "legendary", "exp_multiplier": 2.5, "rarity_bonus": 0.25, "no_prefix": True},
-    {"id": "rod_007", "name": "胡萝卜钓竿", "quality": "epic", "exp_multiplier": 1.8, "rarity_bonus": 0.15, "no_prefix": True},
+    {"id": "rod_006", "name": "金币钓竿", "quality": "legendary", "exp_multiplier": 2.5,
+     "rarity_bonus": 0.25, "no_prefix": True, "built_in_skills": {"treasure": 0.80}},
+    {"id": "rod_007", "name": "胡萝卜钓竿", "quality": "epic", "exp_multiplier": 1.8,
+     "rarity_bonus": 0.15, "no_prefix": True, "built_in_skills": {"voyage": 0.80}},
 ]
 
 # 钓竿前缀
@@ -158,7 +160,6 @@ SPECIAL_PREFIX_BALANCE = {
 SPECIAL_ROD_BALANCE = {
     "gold_rod": {
         "cast_cost": 10,
-        "treasure_chance": 0.15,
     },
 }
 
@@ -320,6 +321,23 @@ def get_rod_prefix(prefix_id: str) -> dict:
     return ROD_PREFIXES[2]  # 默认"普通的"
 
 
+def get_rod_builtin_skills(base_id: str) -> dict:
+    """返回基础钓竿的原生自带词条副本。"""
+    rod_base = get_rod_by_id(base_id)
+    if not rod_base:
+        return {}
+    return dict(rod_base.get("built_in_skills", {}) or {})
+
+
+def get_effective_rod_skills(base_id: str, prefix_id: str, rod_skills: dict = None) -> dict:
+    """合并原生、前缀与实例词条，后写入的实例词条覆盖同名默认值。"""
+    effective_skills = get_rod_builtin_skills(base_id)
+    effective_skills.update(get_rod_prefix(prefix_id).get("skills", {}) or {})
+    if rod_skills:
+        effective_skills.update(rod_skills)
+    return effective_skills
+
+
 def get_bait_prefix(prefix_id: str) -> dict:
     for p in BAIT_PREFIXES:
         if p["id"] == prefix_id:
@@ -351,10 +369,8 @@ def calc_rod_value(base_id: str, prefix_id: str, skills: dict = None) -> int:
     if shop_price <= 0:
         shop_price = 50  # 保底价值（如木制钓竿商店价0）
     multiplier = 1.0
-    # 叠加：前缀默认技能 + 附魔技能覆盖同名键
-    effective_skills = dict(prefix.get("skills", {}))
-    if skills is not None:
-        effective_skills.update(skills)
+    # 叠加：原生技能 + 前缀默认技能 + 实例附魔技能
+    effective_skills = get_effective_rod_skills(base_id, prefix_id, skills)
     for skill_id, val in effective_skills.items():
         if skill_id not in ROD_NON_VALUE_SKILLS:
             multiplier *= (1 + val)
@@ -362,22 +378,10 @@ def calc_rod_value(base_id: str, prefix_id: str, skills: dict = None) -> int:
 
 
 def scramble_text(text: str, intensity: float) -> str:
-    """文字打乱：intensity 0~1，随机替换为unicode符号，最多替换30%字符"""
-    import random
-    if not text or intensity <= 0:
-        return text
-    chars = list(text)
-    # 可替换的 Unicode 符号池（字母、符号、颜文字组件等）
-    unicode_pool = (
-        "?"
-    )
-    max_replace = max(1, int(len(chars) * 0.75))  # 最多替换75%
-    actual_replace = max(1, int(max_replace * min(intensity, 1.0)))
-    indices = random.sample(range(len(chars)), min(actual_replace, len(chars)))
-    for idx in indices:
-        if chars[idx].strip():  # 不替换空白字符，保持可读性
-            chars[idx] = random.choice(unicode_pool)
-    return "".join(chars)
+    """兼容旧调用：使用黑色方块侵蚀文字，不再生成问号乱码。"""
+    # 延迟导入避免静态数据模块与结果渲染模块初始化时循环依赖。
+    from .result_renderer import obscure_text
+    return obscure_text(text, intensity)
 
 
 def add_pig_noise(text: str, chance: float = 0.3) -> str:

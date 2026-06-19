@@ -6,6 +6,7 @@ from .fish_data import (
     LEVELS, ROD_BASES, ROD_PREFIXES, BAIT_BASES, BAIT_PREFIXES,
     calc_rod_value, calc_bait_value, calc_fish_value,
     get_rod_prefix, get_prefix_by_id, get_fish_by_id, get_bait_by_id,
+    get_rod_builtin_skills,
     ENCHANT_CONFIG, ENCHANT_TICKETS, ACHIEVEMENTS,
     DIRECTED_ENCHANT_CONFIG, SHOP_UPGRADE_CONFIG,
 )
@@ -244,12 +245,15 @@ class UserData:
         """添加钓竿，返回 instance_id"""
         if instance_id is None:
             instance_id = f"inst_{uuid.uuid4().hex[:16]}"
+        effective_instance_skills = get_rod_builtin_skills(base_id)
+        if skills:
+            effective_instance_skills.update(skills)
         rod = {
             "base_id": base_id,
             "prefix_id": prefix_id,
             "instance_id": instance_id,
             "enchant_count": enchant_count,
-            "skills": skills if skills else {},
+            "skills": effective_instance_skills,
         }
         self._data.setdefault("owned_rods", []).append(rod)
         return instance_id

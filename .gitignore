@@ -49,6 +49,9 @@ dmypy.json
 *.bak
 *.orig
 .cache/
+.preview-*/
+docs/*preview*.html
+docs/*preview*.png
 
 # IDEs
 .vscode/

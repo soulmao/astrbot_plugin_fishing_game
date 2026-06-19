@@ -13,7 +13,7 @@ from .fish_data import (
     ENCHANT_TICKETS, ENCHANT_CONFIG,
     calc_rod_value, calc_bait_value, calc_fish_value,
     get_rod_prefix, get_bait_prefix, scramble_text, add_pig_noise,
-    SPECIAL_PREFIX_BALANCE, SPECIAL_ROD_BALANCE,
+    SPECIAL_PREFIX_BALANCE, SPECIAL_ROD_BALANCE, get_effective_rod_skills,
 )
 from .storage import StorageManager
 import random
@@ -93,9 +93,10 @@ class FishingCommands(CommandBase):
 
             rod = user.current_rod
             rod_prefix = get_rod_prefix(rod["prefix_id"])
-            # 叠加：前缀默认技能 + 附魔技能覆盖同名键
-            skills = dict(rod_prefix.get("skills", {}))
-            skills.update(rod.get("skills", {}) or {})
+            # 统一叠加：原生自带词条 + 前缀词条 + 实例附魔词条。
+            skills = get_effective_rod_skills(
+                rod["base_id"], rod["prefix_id"], rod.get("skills")
+            )
 
             # 判定特种钓竿
             is_gold_rod = rod["base_id"] == "rod_006"
@@ -119,13 +120,6 @@ class FishingCommands(CommandBase):
             arrogant_val = skills.get("arrogant", 0)
             jealous_val = skills.get("jealous", 0)
 
-            # 金币钓竿自带寻宝，固定成本下仍保留鲜明的金币收益定位。
-            if is_gold_rod:
-                treasure_val = max(
-                    treasure_val,
-                    SPECIAL_ROD_BALANCE["gold_rod"]["treasure_chance"],
-                )
-            
             # 判定是否进入贪婪/无尽贪婪模式（无尽贪婪优先）
             greedy_mode = None
             if endless_greedy_val > 0:
@@ -582,9 +576,9 @@ class FishingCommands(CommandBase):
         rod_rarity_bonus = rod_base["rarity_bonus"] * rod_prefix["multiplier"]
         
         # 贪婪技能额外提升稀有度权重
-        effective_skills = dict(rod_prefix.get("skills", {}) or {})
-        if rod.get("skills"):
-            effective_skills.update(rod.get("skills", {}))
+        effective_skills = get_effective_rod_skills(
+            rod["base_id"], rod["prefix_id"], rod.get("skills")
+        )
         if effective_skills.get("endless_greedy"):
             rod_rarity_bonus += GREEDY_CONFIG["endless"]["base_rarity_bonus"]
         elif effective_skills.get("greedy"):

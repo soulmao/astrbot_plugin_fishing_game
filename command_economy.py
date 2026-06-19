@@ -142,13 +142,8 @@ class EconomyCommands(CommandBase):
             # 执行购买（扣费）
             user.remove_coins(total_price)
             if item["type"] == "rod":
-                # 特种钓竿自带技能
-                built_in_skills = {}
-                if item["base_id"] == "rod_006":
-                    built_in_skills = {"treasure": 0.80}
-                elif item["base_id"] == "rod_007":
-                    built_in_skills = {"voyage": 0.80}
-                user.add_rod(item["base_id"], item["prefix_id"], built_in_skills)
+                # UserData.add_rod 统一注入基础钓竿的原生自带词条。
+                user.add_rod(item["base_id"], item["prefix_id"])
                 # 从当前商店移除已购买的商品
                 items.pop(index - 1)
                 user.set("current_shop", items)

@@ -9,7 +9,7 @@ from .fish_data import (
     ENCHANT_TICKETS, ENCHANT_CONFIG,
     DIRECTED_ENCHANT_CONFIG, SHOP_UPGRADE_CONFIG,
     calc_rod_value, calc_bait_value, calc_fish_value,
-    get_rod_prefix, get_bait_prefix,
+    get_rod_prefix, get_bait_prefix, get_effective_rod_skills,
     ARROGANT_COMPATIBLE_BASES, SPECIAL_PREFIX_BALANCE,
 )
 from .models import UserData
@@ -51,14 +51,9 @@ def format_rod_name(rod: dict, with_value: bool = False) -> str:
     return name
 
 
-def format_rod_skills(prefix_id: str, rod_skills: dict = None) -> str:
-    """格式化钓竿技能文本。前缀默认技能与附魔技能叠加显示，附魔覆盖同名技能"""
-    prefix = get_rod_prefix(prefix_id)
-    default_skills = prefix.get("skills", {})
-    # 合并：前缀默认 + 附魔覆盖
-    effective_skills = dict(default_skills)
-    if rod_skills:
-        effective_skills.update(rod_skills)
+def format_rod_skills(prefix_id: str, rod_skills: dict = None, base_id: str = "") -> str:
+    """格式化原生、前缀和实例词条，实例词条覆盖同名默认值。"""
+    effective_skills = get_effective_rod_skills(base_id, prefix_id, rod_skills)
     if not effective_skills:
         return ""
     parts = []

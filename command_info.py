@@ -149,7 +149,8 @@ class InfoCommands(CommandBase):
 🔧 **特种钓竿：**
 无法附加前缀的独特钓竿，不消耗鱼饵：
 • 🥕 胡萝卜钓竿 - 自带远航技能，触发额外钓鱼；所有返回文本中随机插入猪叫声
-• 💰 金币钓竿 - 不消耗鱼饵，每次固定消耗 10 金币，自带 15% 寻宝；金币越多，钓到高品质鱼的概率越高（最多+50%稀有度）
+• 💰 金币钓竿 - 不消耗鱼饵，每次固定消耗 10 金币，自带 80% 寻宝；金币越多，钓到高品质鱼的概率越高（最多+50%稀有度）
+• ⬛ 无尽贪婪 - 金币越多，返回文字受到的黑色方块侵蚀越强；不再产生问号乱码
 
 🐉 **古龙收藏系列：**
 稀有词缀，仅高级玩家可获得：
@@ -196,7 +197,9 @@ class InfoCommands(CommandBase):
             current = user.current_rod
             for i, rod in enumerate(user.get_owned_rods(), 1):
                 rod_name = format_rod_name(rod)
-                skill_text = format_rod_skills(rod["prefix_id"], rod.get("skills"))
+                skill_text = format_rod_skills(
+                    rod["prefix_id"], rod.get("skills"), rod.get("base_id", "")
+                )
                 enchant_text = f" [附魔{rod.get('enchant_count', 0)}次]" if rod.get('enchant_count', 0) > 0 else ""
                 is_current = (rod.get("instance_id") == current.get("instance_id"))
                 marker = " [当前装备]" if is_current else ""

@@ -11,7 +11,7 @@
 
 - **插件名**: `fishing_game`
 - **显示名称**: 钓鱼游戏
-- **版本**: `V4.5.0`（`metadata.yaml`、`plugin.json`、`main.py` 中 `@register` 已统一）
+- **版本**: `V4.6.0`（`metadata.yaml`、`plugin.json`、`main.py` 中 `@register` 已统一）
 - **作者**: AstrBot
 - **依赖框架**: AstrBot >= 4.9.2
 - **运行环境**: Python 3.9+
@@ -34,12 +34,17 @@
 ### 项目特点
 
 - 命令式交互：所有命令通过 `main.py` 中 `@filter.command` 装饰器注册。
-- LLM 集成：注册了 22 个 FunctionTool，支持自然语言多步 tool calling。
+- LLM 集成：注册了 25 个 FunctionTool，支持自然语言多步 tool calling。
 - 数据持久化：基于 AstrBot 的 K-V 存储（`star.get_kv_data` / `star.put_kv_data`）。
 - 并发安全：每个用户独立 `asyncio.Lock`，赠送与拍卖购买场景按 user_id 排序加锁防止死锁。
 - 定时任务：每日 0 点重置用户赠送次数，每小时检查拍卖行过期物品。
 - 模糊命令入口：通过 `@filter.regex(r"^/(.+)$", priority=1)` 兜底识别 `/钓一下`、`/查看背包` 等口语化变体。
-- 特殊文本效果：装备"贪婪的"前缀钓竿时，返回文本会被随机打乱；装备"胡萝卜钓竿"时文本会随机插入猪叫声。
+- 特殊文本效果：装备"无尽贪婪的"前缀钓竿时，返回文本会随金币增加受到黑色方块侵蚀；装备"胡萝卜钓竿"时文本会随机插入猪叫声。
+- 游戏结果图片：精确命令、模糊命令和调用过本插件 FunctionTool 的最终 LLM 回复都会图片化，失败时回退文本。
+- 背包图片：使用专用结构化模板，包含经验进度条、钓竿技能卡片，以及按库存总价值降序、最多六十种的标签式渔获展示。
+- 市场图片：商店使用三列商品卡，拍卖行使用两列交易卡；列表和搜索结果保留价格、卖家、剩余时间与操作编号。
+- 收藏图片：“我的鱼饵”完整展示效果与当前装备，图鉴展示稀有度进度和最近点亮，成就按类别完整展示全部目标。
+- 钓鱼图片：普通钓鱼、贪婪挑战、收杆结算及失败状态使用专用结构化模板。
 
 ---
 
@@ -73,9 +78,9 @@
 │ 表现层 (main.py)                             │
 │  - FishingGamePlugin（Star 子类）            │
 │  - @filter.command 命令注册与统一路由        │
-│  - LLM FunctionTool 注册（22 个）            │
+│  - LLM FunctionTool 注册（25 个）            │
 │  - 定时任务调度（每日刷新、拍卖行过期检查）  │
-│  - 贪婪钓竿文本打乱 / 胡萝卜钓竿猪叫声效果   │
+│  - LLM 彩色结果图 / 贪婪方块 / 胡萝卜猪叫声  │
 │  - 模糊命令入口（@filter.regex 兜底）        │
 └──────────────────────┬──────────────────────┘
                        │
@@ -145,7 +150,7 @@
 | `models.py` | 648 | `UserData` 数据模型（属性访问器、业务方法、数据迁移） |
 | `storage.py` | 170 | `StorageManager` K-V 持久化、排行榜、拍卖行数据 |
 | `utils.py` | 346 | 格式化、价值计算、商店生成、加权随机等纯工具函数 |
-| `llm_tools.py` | 586 | 22 个 FunctionTool 的 dataclass 定义 |
+| `llm_tools.py` | 660 | 25 个 FunctionTool 的 dataclass 定义 |
 | `fish_data_admin.html` | - | 独立 HTML 数据管理台（静态文件，未在代码中引用） |
 | `_conf_schema.json` | 44 | 插件配置 Schema |
 | `metadata.yaml` | 6 | AstrBot 插件元数据 |
@@ -225,6 +230,7 @@ self.auction_default_price_percent = self.config.get("auction_default_price_perc
 self.auction_price_range_percent = self.config.get("auction_price_range_percent", 0.30)
 self.auction_duration_hours = self.config.get("auction_duration_hours", 24)
 self.fuzzy_match_threshold = self.config.get("fuzzy_match_threshold", 0.6)
+self.llm_result_image_enabled = self.config.get("llm_result_image_enabled", True)
 admin_uids_str = self.config.get("admin_uids", "")
 self.admin_uids = set(uid.strip() for uid in admin_uids_str.split(",") if uid.strip())
 ```
@@ -286,6 +292,7 @@ self.admin_uids = set(uid.strip() for uid in admin_uids_str.split(",") if uid.st
 | `auction_price_range_percent` | float | 0.30 | 拍卖行价格浮动范围 |
 | `auction_duration_hours` | int | 24 | 拍卖物品保留时长（小时） |
 | `fuzzy_match_threshold` | float | 0.6 | 模糊命令匹配阈值，0-1 之间 |
+| `llm_result_image_enabled` | bool | true | 将游戏命令及 LLM 工具结果渲染为彩色图片 |
 | `admin_uids` | string | "" | 管理员 UID 列表，英文逗号分隔 |
 
 ---

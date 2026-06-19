@@ -342,7 +342,7 @@ UID: {target_uid}
 
         rod_data = {"base_id": base_id, "prefix_id": prefix_id, "skills": skills}
         rod_name = format_rod_name(rod_data)
-        skill_text = format_rod_skills(prefix_id, skills)
+        skill_text = format_rod_skills(prefix_id, skills, base_id)
         detail = f"添加 {rod_name} (base={base_id}, prefix={prefix_id}, skills={skills}, enchant_count={enchant_count}, instance={instance_id})"
         await self._add_admin_log(operator, "加钓竿", target_uid, detail)
         return f"✅ 已为 {target_uid} 添加 {rod_name}{skill_text}\n累计附魔: {enchant_count} 次\ninstance_id: {instance_id}"

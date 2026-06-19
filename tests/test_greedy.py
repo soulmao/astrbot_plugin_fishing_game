@@ -39,6 +39,7 @@ from astrbot_plugin_fishing_game.models import UserData
 from astrbot_plugin_fishing_game.command_fishing import FishingCommands, GREEDY_CONFIG
 from astrbot_plugin_fishing_game.fish_data import (
     get_rod_prefix, calc_rod_value, SPECIAL_PREFIX_BALANCE, SPECIAL_ROD_BALANCE,
+    get_rod_builtin_skills, get_effective_rod_skills,
 )
 from astrbot_plugin_fishing_game.utils import calc_enchant_price
 
@@ -242,7 +243,33 @@ class SpecialPrefixBalanceTests(unittest.TestCase):
     def test_gold_rod_uses_sustainable_fixed_cost(self):
         cmds = FishingCommands(MockStar(), MockStorage())
         self.assertEqual(cmds._calc_gold_rod_cast_cost(), 10)
-        self.assertEqual(SPECIAL_ROD_BALANCE["gold_rod"]["treasure_chance"], 0.15)
+        self.assertEqual(get_rod_builtin_skills("rod_006")["treasure"], 0.80)
+
+    def test_special_rods_keep_builtin_skills(self):
+        """所有创建入口都应为特种钓竿保留原生自带词条。"""
+        self.assertEqual(get_rod_builtin_skills("rod_006"), {"treasure": 0.80})
+        self.assertEqual(get_rod_builtin_skills("rod_007"), {"voyage": 0.80})
+
+        user = UserData("special_rod_owner")
+        gold_instance = user.add_rod("rod_006", "")
+        carrot_instance = user.add_rod("rod_007", "")
+        rods = {rod["instance_id"]: rod for rod in user.get_owned_rods()}
+        self.assertEqual(rods[gold_instance]["skills"], {"treasure": 0.80})
+        self.assertEqual(rods[carrot_instance]["skills"], {"voyage": 0.80})
+
+    def test_effective_skills_merge_all_three_sources(self):
+        """收益测试必须同时计入原生、前缀和实例词条。"""
+        regular_skills = get_effective_rod_skills(
+            "rod_004", "rod_pref_10", {"swift": 0.65, "voyage": 0.25}
+        )
+        self.assertEqual(regular_skills["swift"], 0.65)
+        self.assertEqual(regular_skills["lucky"], 0.20)
+        self.assertEqual(regular_skills["voyage"], 0.25)
+
+        special_skills = get_effective_rod_skills(
+            "rod_007", "", {"mending": 0.30}
+        )
+        self.assertEqual(special_skills, {"voyage": 0.80, "mending": 0.30})
 
     def test_lucky_block_has_positive_long_term_bias(self):
         cfg = SPECIAL_PREFIX_BALANCE["lucky_block"]

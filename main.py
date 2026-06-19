@@ -2,6 +2,7 @@
 from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger
+import astrbot.api.message_components as Comp
 from .storage import StorageManager
 from .command_equipment import EquipmentCommands
 from .command_fishing import FishingCommands
@@ -12,7 +13,21 @@ from .command_auction import AuctionCommands
 from .command_enchant import EnchantCommands
 from .command_achievements import AchievementCommands
 from .command_admin import AdminCommands
-from .fish_data import get_rod_prefix, scramble_text
+from .fish_data import get_rod_prefix
+from .result_renderer import RESULT_IMAGE_TEMPLATE, obscure_text, render_result_html
+from .backpack_renderer import (
+    BACKPACK_IMAGE_TEMPLATE, RODS_IMAGE_TEMPLATE,
+    build_backpack_view, build_rods_view,
+)
+from .market_renderer import (
+    AUCTION_IMAGE_TEMPLATE, SHOP_IMAGE_TEMPLATE,
+    build_auction_view, build_shop_view,
+)
+from .gallery_renderer import (
+    ACHIEVEMENTS_IMAGE_TEMPLATE, BAITS_IMAGE_TEMPLATE, COLLECTION_IMAGE_TEMPLATE,
+    build_achievements_view, build_baits_view, build_collection_view,
+)
+from .fishing_renderer import FISHING_IMAGE_TEMPLATE, build_fishing_result_view
 from .llm_tools import (
     FishingHelpTool, FishingFishTool, FishingShopTool,
     FishingBagTool, FishingSellTool, FishingLevelTool,
@@ -27,10 +42,11 @@ from .llm_tools import (
 import time
 import asyncio
 import difflib
+import html
 from .fuzzy_utils import extract_fuzzy_content, build_fuzzy_candidates
 
 
-@register("fishing_game", "AstrBot", "钓鱼游戏插件 - 群聊娱乐插件，支持钓鱼、背包、商店、赠送等完整经济系统", "V4.5.0")
+@register("fishing_game", "AstrBot", "钓鱼游戏插件 - 群聊娱乐插件，支持钓鱼、背包、商店、赠送等完整经济系统", "V4.6.0")
 class FishingGamePlugin(Star):
     def __init__(self, context: Context, config=None):
         super().__init__(context)
@@ -47,12 +63,16 @@ class FishingGamePlugin(Star):
         # 读取模糊匹配配置
         self.fuzzy_match_threshold = self.config.get("fuzzy_match_threshold", 0.6)
         self.fuzzy_match_threshold = max(0.0, min(1.0, float(self.fuzzy_match_threshold)))
+        # 将游戏命令与 LLM 工具的最终回复渲染成游戏主题图片。
+        self.llm_result_image_enabled = bool(self.config.get("llm_result_image_enabled", True))
+        self._pending_image_results = {}
         # 读取管理员 UID 列表
         admin_uids_str = self.config.get("admin_uids", "")
         self.admin_uids = set(uid.strip() for uid in admin_uids_str.split(",") if uid.strip())
         logger.info(f"钓鱼游戏配置: 钓鱼CD={self.fishing_cooldown}s, 商店刷新CD={self.shop_refresh_cooldown}s, "
                     f"拍卖默认价格={self.auction_default_price_percent}, 拍卖浮动={self.auction_price_range_percent}, "
                     f"拍卖保留时长={self.auction_duration_hours}h, 模糊匹配阈值={self.fuzzy_match_threshold}, "
+                    f"游戏结果图片={self.llm_result_image_enabled}, "
                     f"管理员数量={len(self.admin_uids)}")
 
         self.storage = StorageManager(self)
@@ -434,40 +454,193 @@ class FishingGamePlugin(Star):
         """启动每日自动刷新异步任务"""
         self._refresh_task = asyncio.create_task(self._daily_refresh_loop())
 
-    async def _apply_greedy_scramble(self, user_id: str, text: str) -> str:
-        """如果用户装备无尽贪婪钓竿，对返回文本进行打乱"""
-        if not text:
-            return text
+    async def _get_greedy_obscurity_intensity(self, user_id: str) -> float:
+        """获取无尽贪婪的文字侵蚀强度，未触发时返回零。"""
         try:
             user = await self.storage.get_user(user_id)
             rod = user.current_rod
             prefix = get_rod_prefix(rod.get("prefix_id", ""))
-            # 仅无尽贪婪触发文字打乱
             if prefix.get("skills", {}).get("endless_greedy"):
-                intensity = min(user.coins / 100000, 1.0)
-                return scramble_text(text, intensity)
-        except Exception:
-            pass
-        return text
+                return min(user.coins / 100000, 1.0)
+        except Exception as exc:
+            logger.warning(f"读取贪婪文字效果失败: {exc}")
+        return 0.0
+
+    async def _apply_greedy_scramble(self, user_id: str, text: str) -> str:
+        """如果用户装备无尽贪婪钓竿，用黑色方块侵蚀返回文字。"""
+        if not text:
+            return text
+        intensity = await self._get_greedy_obscurity_intensity(user_id)
+        return obscure_text(text, intensity) if intensity > 0 else text
+
+    def _mark_result_for_image(
+        self, event, greedy_intensity: float, cmd_name: str = "",
+        cmd_args: tuple = (), cmd_kwargs: dict = None, command_result: str = "",
+    ) -> None:
+        """标记游戏命令事件，等待最终结果进入图片渲染。"""
+        now = time.monotonic()
+        self._pending_image_results = {
+            event_id: state
+            for event_id, state in self._pending_image_results.items()
+            if now - state["created_at"] < 300
+        }
+        self._pending_image_results[id(event)] = {
+            "created_at": now,
+            "greedy_intensity": greedy_intensity,
+            "cmd_name": cmd_name,
+            "cmd_args": tuple(cmd_args),
+            "cmd_kwargs": dict(cmd_kwargs or {}),
+            "command_result": command_result,
+        }
 
     async def _cmd_with_scramble(self, event, cmd_name: str, *args, **kwargs):
-        """执行命令并应用贪婪打乱（供 LLM Tool 调用）"""
+        """执行 LLM 工具命令；完整结果供模型推理，视觉效果留到最终回复。"""
         if cmd_name not in self._cmd_map:
             return f"[系统错误: 未知命令 {cmd_name}]"
         module, method_name = self._cmd_map[cmd_name]
         cmd_func = getattr(module, method_name)
         result = await cmd_func(event, *args, **kwargs)
-        return await self._apply_greedy_scramble(event.get_sender_id(), result)
+        intensity = await self._get_greedy_obscurity_intensity(event.get_sender_id())
+        if self.llm_result_image_enabled:
+            self._mark_result_for_image(
+                event, intensity, cmd_name, args, kwargs, result,
+            )
+            return result
+        return obscure_text(result, intensity) if intensity > 0 else result
+
+    @filter.on_decorating_result()
+    async def render_fishing_result(self, event: AstrMessageEvent):
+        """把游戏命令或 LLM 工具的纯文本结果替换为彩色图片。"""
+        state = self._pending_image_results.pop(id(event), None)
+        if not self.llm_result_image_enabled or not state:
+            return
+
+        result = event.get_result()
+        chain = getattr(result, "chain", None) if result else None
+        if not chain:
+            return
+
+        plain_parts = [component.text for component in chain if isinstance(component, Comp.Plain)]
+        text = "".join(plain_parts).strip()
+        if not text:
+            return
+
+        intensity = state.get("greedy_intensity", 0.0)
+        if intensity > 0:
+            text = obscure_text(text, intensity)
+
+        try:
+            template = RESULT_IMAGE_TEMPLATE
+            template_data = {
+                "content_html": render_result_html(text),
+                "sender_name": html.escape(event.get_sender_name() or "垂钓者"),
+            }
+            if state.get("cmd_name") == "cmd_bag":
+                user_id = event.get_sender_id()
+                async with self.storage.get_user_lock(user_id):
+                    user = await self.storage.get_user(user_id)
+                    template_data = build_backpack_view(user, event.get_sender_name())
+                template = BACKPACK_IMAGE_TEMPLATE
+            elif state.get("cmd_name") == "cmd_myrods":
+                user_id = event.get_sender_id()
+                async with self.storage.get_user_lock(user_id):
+                    user = await self.storage.get_user(user_id)
+                    template_data = build_rods_view(user, event.get_sender_name())
+                template = RODS_IMAGE_TEMPLATE
+            elif state.get("cmd_name") in ("cmd_shop", "cmd_shop_refresh"):
+                # 刷新失败时保留原始错误结果，避免展示未刷新的货架造成误解。
+                refresh_succeeded = state.get("command_result", "").startswith("✅ 商店已刷新")
+                if state.get("cmd_name") == "cmd_shop" or refresh_succeeded:
+                    user_id = event.get_sender_id()
+                    async with self.storage.get_user_lock(user_id):
+                        user = await self.storage.get_user(user_id)
+                        template_data = build_shop_view(user, event.get_sender_name())
+                    template = SHOP_IMAGE_TEMPLATE
+            elif state.get("cmd_name") == "cmd_auction":
+                cmd_args = state.get("cmd_args", ())
+                action = str(cmd_args[0] if cmd_args else "list").lower()
+                keyword = ""
+                page = 1
+                can_render_market = action in ("list", "列表")
+                if can_render_market and len(cmd_args) > 1:
+                    try:
+                        page = max(1, int(cmd_args[1]))
+                    except (TypeError, ValueError):
+                        page = 1
+                if action in ("search", "搜索") and len(cmd_args) > 1 and cmd_args[1]:
+                    can_render_market = True
+                    keyword = str(cmd_args[1])
+                    if len(cmd_args) > 2:
+                        try:
+                            page = max(1, int(cmd_args[2]))
+                        except (TypeError, ValueError):
+                            page = 1
+                if can_render_market:
+                    listings, total = await self.storage.search_auctions(keyword, page, 10)
+                    template_data = build_auction_view(
+                        listings, total, page, keyword, event.get_sender_id(),
+                    )
+                    template = AUCTION_IMAGE_TEMPLATE
+            elif state.get("cmd_name") in ("cmd_mybaits", "cmd_collection", "cmd_achievements"):
+                user_id = event.get_sender_id()
+                async with self.storage.get_user_lock(user_id):
+                    user = await self.storage.get_user(user_id)
+                    if state.get("cmd_name") == "cmd_mybaits":
+                        template_data = build_baits_view(user, event.get_sender_name())
+                        template = BAITS_IMAGE_TEMPLATE
+                    elif state.get("cmd_name") == "cmd_collection":
+                        template_data = build_collection_view(user, event.get_sender_name())
+                        template = COLLECTION_IMAGE_TEMPLATE
+                    else:
+                        template_data = build_achievements_view(user, event.get_sender_name())
+                        template = ACHIEVEMENTS_IMAGE_TEMPLATE
+            elif state.get("cmd_name") in ("cmd_fish", "cmd_greedy_continue", "cmd_greedy_cashout"):
+                template_data = build_fishing_result_view(
+                    state.get("command_result", text), event.get_sender_name(),
+                )
+                template = FISHING_IMAGE_TEMPLATE
+
+            image_url = await self.html_render(
+                template,
+                template_data,
+                options={"type": "png", "full_page": True, "animations": "disabled"},
+            )
+            image_chain = event.image_result(image_url).chain
+            new_chain = []
+            image_inserted = False
+            for component in chain:
+                if isinstance(component, Comp.Plain):
+                    if not image_inserted:
+                        new_chain.extend(image_chain)
+                        image_inserted = True
+                    continue
+                new_chain.append(component)
+            result.chain = new_chain
+        except Exception as exc:
+            # 保留文本消息链；无尽贪婪仍应维持黑方块侵蚀效果。
+            if intensity > 0:
+                text_inserted = False
+                for component in chain:
+                    if isinstance(component, Comp.Plain):
+                        component.text = text if not text_inserted else ""
+                        text_inserted = True
+            logger.error(f"钓鱼游戏结果图片渲染失败，已回退文本: {exc}")
 
     # ========== 命令代理 ==========
     # 所有命令通过统一的 _route_cmd 方法分派到对应模块
 
     async def _route_cmd(self, event: AstrMessageEvent, cmd_key: str, *args, **kwargs):
-        """统一命令路由：查找模块 -> 执行命令 -> 应用贪婪打乱 -> 返回结果"""
+        """统一命令路由：执行命令，并按配置进入图片或纯文本结果。"""
         module, method_name = self._cmd_map[cmd_key]
         cmd_func = getattr(module, method_name)
         result = await cmd_func(event, *args, **kwargs)
-        result = await self._apply_greedy_scramble(event.get_sender_id(), result)
+        if self.llm_result_image_enabled and cmd_key != "cmd_admin":
+            intensity = await self._get_greedy_obscurity_intensity(event.get_sender_id())
+            self._mark_result_for_image(
+                event, intensity, cmd_key, args, kwargs, result,
+            )
+        else:
+            result = await self._apply_greedy_scramble(event.get_sender_id(), result)
         yield event.plain_result(result)
 
     # ---------- 装备管理 ----------

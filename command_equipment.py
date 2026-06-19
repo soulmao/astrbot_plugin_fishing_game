@@ -44,7 +44,9 @@ class EquipmentCommands(CommandBase):
             
             for i, rod in enumerate(user.get_owned_rods(), 1):
                 rod_name = format_rod_name(rod)
-                skill_text = format_rod_skills(rod["prefix_id"], rod.get("skills"))
+                skill_text = format_rod_skills(
+                    rod["prefix_id"], rod.get("skills"), rod.get("base_id", "")
+                )
                 enchant_text = f" [附魔{rod.get('enchant_count', 0)}次]" if rod.get('enchant_count', 0) > 0 else ""
                 # 显示附魔/升级费用
                 prefix_info = get_rod_prefix(rod["prefix_id"])

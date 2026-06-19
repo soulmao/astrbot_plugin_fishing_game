@@ -35,6 +35,12 @@
     "default": 0.6,
     "hint": "越接近 1 越严格，0.6 可识别 /钓一下、／查看背包等常见口语化变体"
   },
+  "llm_result_image_enabled": {
+    "description": "将钓鱼游戏命令及 LLM 工具结果渲染为彩色图片",
+    "type": "bool",
+    "default": true,
+    "hint": "开启后直接命令、模糊命令和 LLM 工具结果都会图片化；渲染失败时自动回退为文本。"
+  },
   "admin_uids": {
     "description": "管理员 UID 列表（逗号分隔）",
     "type": "string",
