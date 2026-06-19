@@ -272,54 +272,54 @@ BACKPACK_IMAGE_TEMPLATE = r"""
   <style>
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; background: transparent; }
-    body { width: 1200px; padding: 30px; font-family: "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+    body { width: 1200px; padding: 24px; font-family: "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
       color: #17212b; background: radial-gradient(circle at 86% 8%, rgba(123,211,255,.32), transparent 31%),
       linear-gradient(145deg, #d9f3ff 0%, #eefaff 48%, #fff 100%); }
-    .sheet { overflow: hidden; border: 1px solid #a8d9ef; border-radius: 24px; background: rgba(255,255,255,.95);
-      box-shadow: 0 18px 48px rgba(46,122,158,.18); }
-    .header { padding: 27px 34px 24px; border-bottom: 1px solid #c7e7f6;
+    .sheet { overflow: hidden; border: 1px solid #a8d9ef; border-radius: 20px; background: rgba(255,255,255,.95);
+      box-shadow: 0 12px 32px rgba(46,122,158,.16); }
+    .header { padding: 18px 26px 15px; border-bottom: 1px solid #c7e7f6;
       background: linear-gradient(100deg, #caedff 0%, #eaf8ff 55%, #fff 100%); }
-    .user-name { font-size: 34px; line-height: 1.2; font-weight: 900; color: #102a38; letter-spacing: 1px; }
-    .user-meta { margin-top: 8px; color: #54798b; font-size: 15px; letter-spacing: 1px; }
-    .body { padding: 28px 34px 34px; }
-    .summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 18px; }
-    .summary-card { padding: 14px 16px; border: 1px solid #d3eaf5; border-radius: 14px; background: #f8fcfe; }
-    .summary-label { color: #688391; font-size: 13px; } .summary-value { margin-top: 4px; font-size: 21px; font-weight: 800; color: #17212b; }
-    .exp-card { padding: 16px 18px; border: 1px solid #c8e6f4; border-radius: 15px; background: #f4fbff; }
-    .exp-head { display: flex; justify-content: space-between; gap: 18px; margin-bottom: 9px; font-size: 14px; color: #527487; }
+    .user-name { font-size: 28px; line-height: 1.2; font-weight: 900; color: #102a38; letter-spacing: 1px; }
+    .user-meta { margin-top: 5px; color: #54798b; font-size: 13px; letter-spacing: 1px; }
+    .body { padding: 16px 22px 20px; }
+    .summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+    .summary-card { padding: 10px 12px; border: 1px solid #d3eaf5; border-radius: 11px; background: #f8fcfe; }
+    .summary-label { color: #688391; font-size: 11px; } .summary-value { margin-top: 2px; font-size: 18px; font-weight: 800; color: #17212b; }
+    .exp-card { padding: 11px 13px; border: 1px solid #c8e6f4; border-radius: 12px; background: #f4fbff; }
+    .exp-head { display: flex; justify-content: space-between; gap: 18px; margin-bottom: 6px; font-size: 12px; color: #527487; }
     .exp-value { color: #12658b; font-weight: 800; }
-    .progress { height: 13px; overflow: hidden; border-radius: 999px; background: #dceef7; box-shadow: inset 0 1px 3px rgba(32,91,120,.12); }
+    .progress { height: 10px; overflow: hidden; border-radius: 999px; background: #dceef7; box-shadow: inset 0 1px 3px rgba(32,91,120,.12); }
     .progress-fill { height: 100%; min-width: 5px; border-radius: inherit; background: linear-gradient(90deg, #4bb7e8, #2387df); }
-    .section { margin-top: 26px; } .section-title { margin-bottom: 12px; font-size: 20px; font-weight: 900; color: #153746; }
-    .rod-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
-    .rod-card { padding: 16px; border: 1px solid #b9deef; border-radius: 16px;
-      background: linear-gradient(135deg, #d8f2ff 0%, #f3fbff 62%, #fff 100%); box-shadow: 0 7px 18px rgba(41,128,169,.09); }
-    .rod-card.current { grid-column: 1 / -1; border: 2px solid #258be3; box-shadow: 0 0 0 3px rgba(37,139,227,.12), 0 8px 22px rgba(37,139,227,.14); }
-    .rod-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-    .rod-name { min-width: 0; font-size: 19px; font-weight: 900; color: #123348; }
-    .rod-badges { display: flex; align-items: center; gap: 7px; flex: 0 0 auto; }
-    .enhancement { padding: 3px 9px; border-radius: 999px; background: #1676c2; color: #fff; font-weight: 900; }
-    .current-badge { padding: 3px 9px; border-radius: 999px; background: #e0f2ff; color: #146fb8; font-size: 12px; font-weight: 800; }
-    .skill-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 13px; }
-    .skill { min-width: 82px; padding: 7px 10px; border: 1px solid #b9deef; border-radius: 10px; background: rgba(255,255,255,.84); text-align: center; }
-    .skill-name { display: block; color: #275267; font-size: 13px; font-weight: 700; }
-    .skill-value { display: block; margin-top: 2px; color: #126fba; font-size: 15px; font-weight: 900; }
-    .empty { color: #8296a0; font-size: 14px; }
-    .chip-list { display: flex; flex-wrap: wrap; gap: 9px; }
-    .chip { padding: 7px 11px; border: 1px solid #d0e8f3; border-radius: 999px; background: #f7fcfe; color: #27434f; }
+    .section { margin-top: 18px; } .section-title { margin-bottom: 8px; font-size: 16px; font-weight: 900; color: #153746; }
+    .rod-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+    .rod-card { padding: 11px; border: 1px solid #b9deef; border-radius: 12px;
+      background: linear-gradient(135deg, #d8f2ff 0%, #f3fbff 62%, #fff 100%); box-shadow: 0 4px 12px rgba(41,128,169,.08); }
+    .rod-card.current { grid-column: 1 / -1; border: 2px solid #258be3; box-shadow: 0 0 0 3px rgba(37,139,227,.12), 0 6px 16px rgba(37,139,227,.14); }
+    .rod-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .rod-name { min-width: 0; font-size: 15px; font-weight: 900; color: #123348; }
+    .rod-badges { display: flex; align-items: center; gap: 5px; flex: 0 0 auto; }
+    .enhancement { padding: 2px 7px; border-radius: 999px; background: #1676c2; color: #fff; font-weight: 900; font-size: 11px; }
+    .current-badge { padding: 2px 7px; border-radius: 999px; background: #e0f2ff; color: #146fb8; font-size: 11px; font-weight: 800; }
+    .skill-grid { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+    .skill { min-width: 68px; padding: 5px 7px; border: 1px solid #b9deef; border-radius: 8px; background: rgba(255,255,255,.84); text-align: center; }
+    .skill-name { display: block; color: #275267; font-size: 11px; font-weight: 700; }
+    .skill-value { display: block; margin-top: 1px; color: #126fba; font-size: 13px; font-weight: 900; }
+    .empty { color: #8296a0; font-size: 12px; }
+    .chip-list { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip { padding: 5px 9px; border: 1px solid #d0e8f3; border-radius: 999px; background: #f7fcfe; color: #27434f; font-size: 12px; }
     .chip-current { border-color: #5ca8df; background: #e5f4ff; color: #146da9; font-weight: 700; }
-    .count { margin-left: 5px; color: #637c88; font-weight: 800; }
-    .fish-head { display: flex; justify-content: space-between; gap: 16px; align-items: baseline; margin-bottom: 12px; }
-    .fish-total { color: #966300; font-size: 14px; font-weight: 800; }
+    .count { margin-left: 4px; color: #637c88; font-weight: 800; }
+    .fish-head { display: flex; justify-content: space-between; gap: 16px; align-items: baseline; margin-bottom: 8px; }
+    .fish-total { color: #966300; font-size: 12px; font-weight: 800; }
     .fish-chip { border-color: #d8e9f1; background: #fbfdfe; }
     .fish-name { font-weight: 750; }
     .rarity-common { color: #222a30; } .rarity-rare { color: #1478c9; }
     .rarity-legendary { color: #d52f45; } .rarity-mythic { color: #8438b5; }
     .ancient { color: #a76d00; }
-    .fish-more { margin-top: 11px; padding: 9px; border-radius: 10px; text-align: center; color: #496979; background: #edf7fb; font-weight: 800; }
-    .lower-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
-    .status-row { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 24px; padding-top: 19px; border-top: 1px solid #d8ebf4; }
-    .status { padding: 7px 11px; border-radius: 10px; background: #edf8fd; color: #285263; }
+    .fish-more { margin-top: 8px; padding: 7px; border-radius: 8px; text-align: center; color: #496979; background: #edf7fb; font-weight: 800; font-size: 12px; }
+    .lower-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .status-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 16px; padding-top: 12px; border-top: 1px solid #d8ebf4; }
+    .status { padding: 5px 8px; border-radius: 8px; background: #edf8fd; color: #285263; font-size: 12px; }
   </style>
 </head>
 <body>
@@ -366,7 +366,7 @@ BACKPACK_IMAGE_TEMPLATE = r"""
 
       <section class="section">
         <div class="fish-head"><div class="section-title" style="margin:0">🐠 渔获 · {{ fishes.total_types }} 种</div><div class="fish-total">总价值 {{ fishes.total_value }} 金币</div></div>
-        <div class="chip-list">{% for fish in fishes.items %}<span class="chip fish-chip"><span class="fish-name rarity-{{ fish.rarity }}{% if fish.ancient %} ancient{% endif %}">{{ fish.name }}</span><span class="count">× {{ fish.count }}</span></span>{% else %}<span class="empty">暂无渔获</span>{% endfor %}</div>
+        <div class="chip-list">{% for fish in fishes['items'] %}<span class="chip fish-chip"><span class="fish-name rarity-{{ fish.rarity }}{% if fish.ancient %} ancient{% endif %}">{{ fish.name }}</span><span class="count">× {{ fish.count }}</span></span>{% else %}<span class="empty">暂无渔获</span>{% endfor %}</div>
         {% if fishes.hidden_count %}<div class="fish-more">还有 {{ fishes.hidden_count }} 条渔获未展示</div>{% endif %}
       </section>
 
@@ -393,35 +393,35 @@ RODS_IMAGE_TEMPLATE = r"""
   <style>
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; background: transparent; }
-    body { width: 920px; padding: 30px; font-family: "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+    body { width: 920px; padding: 24px; font-family: "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
       color: #17212b; background: radial-gradient(circle at 86% 8%, rgba(123,211,255,.32), transparent 31%),
       linear-gradient(145deg, #d9f3ff 0%, #eefaff 48%, #fff 100%); }
-    .sheet { overflow: hidden; border: 1px solid #a8d9ef; border-radius: 24px; background: rgba(255,255,255,.95);
-      box-shadow: 0 18px 48px rgba(46,122,158,.18); }
-    .header { padding: 27px 34px 24px; border-bottom: 1px solid #c7e7f6;
+    .sheet { overflow: hidden; border: 1px solid #a8d9ef; border-radius: 20px; background: rgba(255,255,255,.95);
+      box-shadow: 0 12px 32px rgba(46,122,158,.16); }
+    .header { padding: 18px 26px 15px; border-bottom: 1px solid #c7e7f6;
       background: linear-gradient(100deg, #caedff 0%, #eaf8ff 55%, #fff 100%); }
-    .user-name { font-size: 34px; font-weight: 900; color: #102a38; }
-    .user-meta { margin-top: 8px; color: #54798b; font-size: 15px; letter-spacing: 1px; }
-    .body { padding: 28px 34px 34px; }
-    .rod-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; }
-    .rod-card { min-width: 0; padding: 17px; border: 1px solid #b9deef; border-radius: 16px;
-      background: linear-gradient(135deg, #d8f2ff 0%, #f3fbff 62%, #fff 100%); box-shadow: 0 7px 18px rgba(41,128,169,.09); }
-    .rod-card.current { border: 2px solid #258be3; box-shadow: 0 0 0 3px rgba(37,139,227,.12), 0 8px 22px rgba(37,139,227,.14); }
-    .rod-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
-    .rod-title { min-width: 0; } .rod-index { margin-bottom: 4px; color: #668391; font-size: 12px; font-weight: 800; }
-    .rod-name { font-size: 18px; line-height: 1.35; font-weight: 900; color: #123348; }
-    .rod-badges { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
-    .enhancement { padding: 3px 9px; border-radius: 999px; background: #1676c2; color: #fff; font-weight: 900; }
-    .current-badge { padding: 3px 9px; border-radius: 999px; background: #e0f2ff; color: #146fb8; font-size: 12px; font-weight: 800; }
-    .skill-grid { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 13px; }
-    .skill { min-width: 76px; padding: 6px 8px; border: 1px solid #b9deef; border-radius: 9px; background: rgba(255,255,255,.86); text-align: center; }
-    .skill-name { display: block; color: #275267; font-size: 12px; font-weight: 700; }
-    .skill-value { display: block; margin-top: 2px; color: #126fba; font-size: 14px; font-weight: 900; }
-    .empty { margin-top: 13px; color: #8296a0; font-size: 13px; }
-    .rod-footer { display: flex; flex-direction: column; gap: 7px; margin-top: 13px; padding-top: 11px; border-top: 1px solid #cce5f1; }
-    .price { color: #176a9b; font-size: 13px; font-weight: 800; }
-    .warning { padding: 7px 9px; border: 1px solid #f1c5a5; border-radius: 9px; background: #fff7ef; color: #a84a17; font-size: 12px; line-height: 1.45; }
-    .hint { margin-top: 22px; padding: 12px 14px; border-radius: 12px; background: #edf8fd; color: #496979; text-align: center; font-size: 14px; }
+    .user-name { font-size: 28px; font-weight: 900; color: #102a38; }
+    .user-meta { margin-top: 5px; color: #54798b; font-size: 13px; letter-spacing: 1px; }
+    .body { padding: 16px 22px 20px; }
+    .rod-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .rod-card { min-width: 0; padding: 11px; border: 1px solid #b9deef; border-radius: 12px;
+      background: linear-gradient(135deg, #d8f2ff 0%, #f3fbff 62%, #fff 100%); box-shadow: 0 4px 12px rgba(41,128,169,.08); }
+    .rod-card.current { border: 2px solid #258be3; box-shadow: 0 0 0 3px rgba(37,139,227,.12), 0 6px 16px rgba(37,139,227,.14); }
+    .rod-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 9px; }
+    .rod-title { min-width: 0; } .rod-index { margin-bottom: 2px; color: #668391; font-size: 11px; font-weight: 800; }
+    .rod-name { font-size: 15px; line-height: 1.35; font-weight: 900; color: #123348; }
+    .rod-badges { display: flex; align-items: center; gap: 5px; flex: 0 0 auto; }
+    .enhancement { padding: 2px 7px; border-radius: 999px; background: #1676c2; color: #fff; font-weight: 900; font-size: 11px; }
+    .current-badge { padding: 2px 7px; border-radius: 999px; background: #e0f2ff; color: #146fb8; font-size: 11px; font-weight: 800; }
+    .skill-grid { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+    .skill { min-width: 66px; padding: 4px 6px; border: 1px solid #b9deef; border-radius: 7px; background: rgba(255,255,255,.86); text-align: center; }
+    .skill-name { display: block; color: #275267; font-size: 10px; font-weight: 700; }
+    .skill-value { display: block; margin-top: 1px; color: #126fba; font-size: 12px; font-weight: 900; }
+    .empty { margin-top: 8px; color: #8296a0; font-size: 11px; }
+    .rod-footer { display: flex; flex-direction: column; gap: 5px; margin-top: 9px; padding-top: 8px; border-top: 1px solid #cce5f1; }
+    .price { color: #176a9b; font-size: 11px; font-weight: 800; }
+    .warning { padding: 5px 7px; border: 1px solid #f1c5a5; border-radius: 7px; background: #fff7ef; color: #a84a17; font-size: 10px; line-height: 1.45; }
+    .hint { margin-top: 14px; padding: 9px 11px; border-radius: 10px; background: #edf8fd; color: #496979; text-align: center; font-size: 12px; }
   </style>
 </head>
 <body>

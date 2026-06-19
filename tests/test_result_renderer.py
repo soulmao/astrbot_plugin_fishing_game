@@ -67,6 +67,11 @@ class ResultRendererTests(unittest.TestCase):
         content = renderer.render_result_html("贪婪■侵蚀")
         self.assertIn('<span class="obscured">■</span>', content)
 
+    def test_t2i_endpoint_failures_are_recognized(self):
+        self.assertTrue(renderer.is_t2i_service_error("All endpoints failed: HTTP 502"))
+        self.assertTrue(renderer.is_t2i_service_error("HTTP 503"))
+        self.assertFalse(renderer.is_t2i_service_error("Jinja2 template syntax error"))
+
 
 class GreedyObscurityTests(unittest.TestCase):
     """无尽贪婪应产生黑色方块，不再制造问号乱码。"""

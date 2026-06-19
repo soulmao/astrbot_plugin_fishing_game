@@ -14,7 +14,9 @@ from .command_enchant import EnchantCommands
 from .command_achievements import AchievementCommands
 from .command_admin import AdminCommands
 from .fish_data import get_rod_prefix
-from .result_renderer import RESULT_IMAGE_TEMPLATE, obscure_text, render_result_html
+from .result_renderer import (
+    RESULT_IMAGE_TEMPLATE, is_t2i_service_error, obscure_text, render_result_html,
+)
 from .backpack_renderer import (
     BACKPACK_IMAGE_TEMPLATE, RODS_IMAGE_TEMPLATE,
     build_backpack_view, build_rods_view,
@@ -46,7 +48,7 @@ import html
 from .fuzzy_utils import extract_fuzzy_content, build_fuzzy_candidates
 
 
-@register("fishing_game", "AstrBot", "钓鱼游戏插件 - 群聊娱乐插件，支持钓鱼、背包、商店、赠送等完整经济系统", "V4.6.0")
+@register("fishing_game", "AstrBot", "钓鱼游戏插件 - 群聊娱乐插件，支持钓鱼、背包、商店、赠送等完整经济系统", "V4.6.1")
 class FishingGamePlugin(Star):
     def __init__(self, context: Context, config=None):
         super().__init__(context)
@@ -213,6 +215,8 @@ class FishingGamePlugin(Star):
             '收杆', '结算贪婪', 'greedy_cashout',
             # 成就系统
             '成就', 'achievements',
+            # 管理员系统
+            '管理', 'admin',
         }
         return exact
 
@@ -624,7 +628,10 @@ class FishingGamePlugin(Star):
                     if isinstance(component, Comp.Plain):
                         component.text = text if not text_inserted else ""
                         text_inserted = True
-            logger.error(f"钓鱼游戏结果图片渲染失败，已回退文本: {exc}")
+            if is_t2i_service_error(exc):
+                logger.warning(f"AstrBot T2I 图片服务暂时不可用，钓鱼结果已回退文本: {exc}")
+            else:
+                logger.error(f"钓鱼游戏结果图片渲染失败，已回退文本: {exc}")
 
     # ========== 命令代理 ==========
     # 所有命令通过统一的 _route_cmd 方法分派到对应模块

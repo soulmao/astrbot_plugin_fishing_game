@@ -39,7 +39,7 @@
     "description": "将钓鱼游戏命令及 LLM 工具结果渲染为彩色图片",
     "type": "bool",
     "default": true,
-    "hint": "开启后直接命令、模糊命令和 LLM 工具结果都会图片化；渲染失败时自动回退为文本。"
+    "hint": "开启后直接命令、模糊命令和 LLM 工具结果都会图片化；依赖 AstrBot T2I 服务，端点不可用时自动回退为文本。"
   },
   "admin_uids": {
     "description": "管理员 UID 列表（逗号分隔）",

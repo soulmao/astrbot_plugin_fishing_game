@@ -3,7 +3,7 @@
 > 基于 [AstrBot](https://github.com/AstrBotDevs/AstrBot) 框架的群聊钓鱼游戏插件，支持钓鱼、背包、商店、装备、赠送、排行榜、图鉴等完整经济系统。
 
 [![AstrBot](https://img.shields.io/badge/AstrBot-%3E%3D4.9.2-blue)](https://github.com/AstrBotDevs/AstrBot)
-[![Version](https://img.shields.io/badge/version-V4.6.0-green)]()
+[![Version](https://img.shields.io/badge/version-V4.6.1-green)]()
 [![License](https://img.shields.io/badge/license-MIT-orange)]()
 
 ---
@@ -13,6 +13,7 @@
 - [功能特性](#-功能特性)
 - [安装方式](#-安装方式)
 - [配置说明](#-配置说明)
+  - [图片留白问题](#图片留白问题)
 - [游戏玩法](#-游戏玩法)
 - [命令列表](#-命令列表)
 - [LLM 工具支持](#-llm-工具支持)
@@ -45,6 +46,13 @@
 | 🏪 **拍卖行** | 上架/购买/出售/取消钓竿、鱼饵、渔获、附魔券、道具券 |
 | ✨ **附魔系统** | 随机附魔、金币升级技能、定向附魔券提升指定技能 |
 | ♾️ **贪婪切换** | 支持在「贪婪的」与「无尽贪婪的」钓竿前缀之间切换，消耗 1000 金币 |
+
+### V4.6.1 更新摘要
+
+- 修复自建 T2I 服务渲染图片右侧/底部留白问题，优化模板尺寸与视口适配。
+- 压缩各渲染页面（背包、商店、拍卖行、图鉴、成就、钓鱼结算等）卡片布局，提升信息密度。
+- 修复 `/管理 帮助` 被普通帮助命令夺舍的问题，将 `管理`/`admin` 加入精确命令集合。
+- 在 README 中新增「图片留白问题」排查与 T2I 服务端修复说明。
 
 ### V4.6.0 更新摘要
 
@@ -102,6 +110,43 @@ git clone https://github.com/soulmao/astrbot_plugin_fishing_game.git
 | `fuzzy_match_threshold` | `float` | `0.6` | 模糊命令匹配阈值，0-1 之间 |
 | `llm_result_image_enabled` | `bool` | `true` | 将游戏命令及 LLM 工具结果渲染为彩色图片，失败时自动回退文本 |
 | `admin_uids` | `string` | `""` | 管理员 UID 列表，英文逗号分隔 |
+
+> 图片渲染由 AstrBot Core 的 T2I 服务完成。若日志出现 `All endpoints failed`、HTTP 502/503/504，表示外部图片端点暂时不可用，并非游戏数据或模板损坏；插件会保留文本结果。需要稳定图片服务时，请在 AstrBot 中配置可用的备用或自建 T2I 端点。
+
+### 图片留白问题
+
+如果你使用自建 T2I 服务（如 `soulter/astrbot-t2i-service`），发现渲染出的图片**右侧或底部有大量留白**，这是因为 T2I 服务默认使用固定视口（默认 `800x720` 或你显式指定的宽度），而插件模板会根据内容动态调整 body 宽度（例如贪婪/收杆页面仅 `720px`）。当视口宽度大于内容宽度时，截图就会包含右侧空白。
+
+#### 修复建议
+
+需要修改 T2I 服务源码，让 `full_page=True` 时同时按内容宽度和高度截图。以 `soulter/astrbot-t2i-service` 为例，编辑容器内的 `/app/src/render.py`：
+
+1. 先用一个较小的视口加载页面（例如 `100x1`），让 `scrollWidth` 能反映内容实际宽度。
+2. 加载完成后，读取 `document.documentElement.scrollWidth` 和 `scrollHeight`。
+3. 将视口调整为内容实际尺寸，再进行截图。
+
+修改后的核心逻辑类似：
+
+```python
+# 先用较小视口加载，获取真实内容尺寸
+await page.set_viewport_size({"width": 100, "height": 1})
+await page.goto(f"file://{html_file_path}", timeout=screenshot_options.timeout)
+
+scroll_size = await page.evaluate(
+    """() => ({
+        width: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth),
+        height: Math.max(document.documentElement.scrollHeight, document.body.scrollHeight)
+    })"""
+)
+final_width = viewport_width if viewport_width is not None else scroll_size["width"]
+final_height = scroll_size["height"] if screenshot_options.full_page else viewport_height
+await page.set_viewport_size({"width": max(final_width, 1), "height": max(final_height, 1)})
+
+# 然后再执行 screenshot
+await page.screenshot(path=result_path, **screenshot_kwargs)
+```
+
+修改完成后重启 T2I 容器即可。如果显式传入了 `viewport_width`，仍建议优先使用调用方指定的宽度，以兼容需要固定宽度的场景。
 
 ---
 

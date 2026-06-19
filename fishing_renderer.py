@@ -189,7 +189,74 @@ def build_fishing_result_view(command_result: str, sender_name: str) -> dict:
 
 
 FISHING_IMAGE_TEMPLATE = r"""
-<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><style>
-*{box-sizing:border-box}html,body{margin:0;padding:0;background:transparent}body{width:1040px;padding:30px;font-family:"Microsoft YaHei","Noto Sans CJK SC",sans-serif;color:#17212b;background:radial-gradient(circle at 86% 8%,rgba(123,211,255,.32),transparent 31%),linear-gradient(145deg,#d9f3ff 0%,#eefaff 48%,#fff 100%)}.sheet{overflow:hidden;border:1px solid #a8d9ef;border-radius:24px;background:rgba(255,255,255,.96);box-shadow:0 18px 48px rgba(46,122,158,.18)}.header{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;padding:27px 32px 24px;border-bottom:1px solid #c7e7f6;background:linear-gradient(100deg,#caedff 0%,#eaf8ff 55%,#fff 100%)}.title{font-size:32px;font-weight:900;color:#102a38}.subtitle{margin-top:7px;color:#54798b;font-size:14px}.user{color:#176b98;font-weight:800}.body{padding:25px 32px 32px}.event-list{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px}.event{padding:7px 10px;border-radius:999px;background:#e7f6ff;color:#176a98;font-size:13px;font-weight:800}.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.stat{padding:13px 14px;border:1px solid #d3e8f2;border-radius:13px;background:#f8fcfe}.stat-label{color:#708894;font-size:12px}.stat-value{margin-top:5px;color:#153746;font-size:18px;font-weight:900}.fish-title{margin:22px 0 10px;font-size:19px;font-weight:900}.fish-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}.fish{min-width:0;padding:11px 12px;border:1px solid #d6e9f2;border-radius:11px;background:#fbfdfe}.fish-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:900}.fish-meta{display:flex;justify-content:space-between;gap:8px;margin-top:6px;color:#718894;font-size:12px}.rarity-common{color:#26343b}.rarity-rare{color:#1478c9}.rarity-legendary{color:#d52f45}.rarity-mythic{color:#8438b5}.ancient{color:#a76d00}.more,.notice,.action{margin-top:10px;padding:9px 11px;border-radius:10px;background:#edf8fd;color:#496979;font-size:13px}.notice-list{display:grid;gap:8px;margin-top:18px}.notice{margin:0}.action{background:#f3edff;color:#69439c;font-weight:800}.status-box{padding:22px;border:1px solid #d8e8ef;border-radius:15px;background:#f8fcfe;color:#496979;line-height:1.7}.failure .header{background:linear-gradient(100deg,#ffe8e8,#fff5f5 55%,#fff)}.failure .title{color:#9e3540}.warning .header{background:linear-gradient(100deg,#fff2d7,#fffaf0 55%,#fff)}.greedy .header,.cashout .header{background:linear-gradient(100deg,#e9dcff,#f6f0ff 55%,#fff)}.greedy .title,.cashout .title{color:#57328c}
-</style></head><body class="{{ kind }}"><article class="sheet"><header class="header"><div><div class="title">{% if kind == 'success' %}🎣{% elif kind in ('greedy','cashout') %}🧿{% elif kind == 'failure' %}💥{% else %}⏳{% endif %} {{ title }}</div><div class="subtitle">{{ subtitle }}</div></div><div class="user">{{ user_name }}</div></header><main class="body">{% if events %}<div class="event-list">{% for event in events %}<span class="event">{{ event }}</span>{% endfor %}</div>{% endif %}{% if stats %}<section class="stats">{% for stat in stats %}<article class="stat"><div class="stat-label">{{ stat.label }}</div><div class="stat-value">{{ stat.value }}</div></article>{% endfor %}</section>{% endif %}{% if fishes %}<div class="fish-title">🐠 本次渔获</div><section class="fish-grid">{% for fish in fishes %}<article class="fish"><div class="fish-name rarity-{{ fish.rarity }}{% if fish.ancient %} ancient{% endif %}">{{ fish.name }}</div><div class="fish-meta"><span>× {{ fish.count }}</span><span>{% if fish.price %}{{ fish.price }} 金币{% endif %}</span></div></article>{% endfor %}</section>{% if hidden_fishes %}<div class="more">还有 {{ hidden_fishes }} 条稀有渔获未展示</div>{% endif %}{% endif %}{% if notices %}<section class="notice-list">{% for notice in notices %}<div class="notice">{{ notice }}</div>{% endfor %}</section>{% endif %}{% if raw_lines %}<section class="notice-list">{% for line in raw_lines %}<div class="{% if kind == 'greedy' %}action{% else %}notice{% endif %}">{{ line }}</div>{% endfor %}</section>{% endif %}{% if not stats and not fishes and not raw_lines %}<div class="status-box">{{ subtitle }}</div>{% endif %}</main></article></body></html>
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: transparent; }
+    body {
+      padding: 24px;
+      font-family: "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+      color: #17212b;
+      background: radial-gradient(circle at 86% 8%, rgba(123,211,255,.32), transparent 31%),
+                  linear-gradient(145deg, #d9f3ff 0%, #eefaff 48%, #fff 100%);
+    }
+    body.success { width: 1040px; }
+    body.greedy, body.cashout { width: 720px; }
+    body.failure, body.warning { width: 760px; }
+    .sheet { overflow: hidden; border: 1px solid #a8d9ef; border-radius: 20px;
+      background: rgba(255,255,255,.96); box-shadow: 0 12px 32px rgba(46,122,158,.16); }
+    .header { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px;
+      padding: 18px 24px 15px; border-bottom: 1px solid #c7e7f6;
+      background: linear-gradient(100deg, #caedff 0%, #eaf8ff 55%, #fff 100%); }
+    .title { font-size: 28px; font-weight: 900; color: #102a38; }
+    .subtitle { margin-top: 4px; color: #54798b; font-size: 13px; }
+    .user { color: #176b98; font-weight: 800; font-size: 15px; }
+    .body { padding: 14px 20px 18px; }
+    .event-list { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; }
+    .event { padding: 4px 8px; border-radius: 999px; background: #e7f6ff;
+      color: #176a98; font-size: 12px; font-weight: 800; }
+    .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
+    .stat { padding: 8px 10px; border: 1px solid #d3e8f2; border-radius: 10px; background: #f8fcfe; }
+    .stat-label { color: #708894; font-size: 11px; }
+    .stat-value { margin-top: 2px; color: #153746; font-size: 16px; font-weight: 900; }
+    .fish-title { margin: 14px 0 7px; font-size: 16px; font-weight: 900; color: #153746; }
+    .fish-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+    .fish { min-width: 0; padding: 7px 9px; border: 1px solid #d6e9f2; border-radius: 9px; background: #fbfdfe; }
+    .fish-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 900; }
+    .fish-meta { display: flex; justify-content: space-between; gap: 6px; margin-top: 3px; color: #718894; font-size: 11px; }
+    .rarity-common { color: #26343b; }
+    .rarity-rare { color: #1478c9; }
+    .rarity-legendary { color: #d52f45; }
+    .rarity-mythic { color: #8438b5; }
+    .ancient { color: #a76d00; }
+    .notice-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+    .notice, .action, .more { padding: 7px 9px; border-radius: 8px; background: #edf8fd;
+      color: #496979; font-size: 12px; font-weight: 800; }
+    .action { background: #f0e9ff; color: #5b2db5; }
+    .status-box { padding: 28px; text-align: center; color: #5d8193; font-size: 16px; }
+  </style>
+</head>
+<body class="{{ kind }}">
+  <article class="sheet">
+    <header class="header">
+      <div>
+        <div class="title">{% if kind == 'success' %}🎣{% elif kind in ('greedy','cashout') %}🧿{% elif kind == 'failure' %}💥{% else %}⏳{% endif %} {{ title }}</div>
+        <div class="subtitle">{{ subtitle }}</div>
+      </div>
+      <div class="user">{{ user_name }}</div>
+    </header>
+    <main class="body">
+      {% if events %}<div class="event-list">{% for event in events %}<span class="event">{{ event }}</span>{% endfor %}</div>{% endif %}
+      {% if stats %}<section class="stats">{% for stat in stats %}<article class="stat"><div class="stat-label">{{ stat.label }}</div><div class="stat-value">{{ stat.value }}</div></article>{% endfor %}</section>{% endif %}
+      {% if fishes %}<div class="fish-title">🐠 本次渔获</div><section class="fish-grid">{% for fish in fishes %}<article class="fish"><div class="fish-name rarity-{{ fish.rarity }}{% if fish.ancient %} ancient{% endif %}">{{ fish.name }}</div><div class="fish-meta"><span>× {{ fish.count }}</span><span>{% if fish.price %}{{ fish.price }} 金币{% endif %}</span></div></article>{% endfor %}</section>{% if hidden_fishes %}<div class="more">还有 {{ hidden_fishes }} 条稀有渔获未展示</div>{% endif %}{% endif %}
+      {% if notices %}<section class="notice-list">{% for notice in notices %}<div class="notice">{{ notice }}</div>{% endfor %}</section>{% endif %}
+      {% if raw_lines %}<section class="notice-list">{% for line in raw_lines %}<div class="{% if kind == 'greedy' %}action{% else %}notice{% endif %}">{{ line }}</div>{% endfor %}</section>{% endif %}
+      {% if not stats and not fishes and not raw_lines %}<div class="status-box">{{ subtitle }}</div>{% endif %}
+    </main>
+  </article>
+</body>
+</html>
 """

@@ -15,6 +15,20 @@ RARITY_LABELS = {
 }
 
 
+def is_t2i_service_error(error) -> bool:
+    """判断异常是否来自 AstrBot 外部 T2I 端点不可用。"""
+    message = str(error).lower()
+    markers = (
+        "all endpoints failed",
+        "text2img failed",
+        "t2i.network_strategy",
+        "http 502",
+        "http 503",
+        "http 504",
+    )
+    return any(marker in message for marker in markers)
+
+
 def obscure_text(text: str, intensity: float, rng=None) -> str:
     """用黑色方块侵蚀文字，保留空白与换行以维持版面结构。"""
     if not text or intensity <= 0:
@@ -176,8 +190,7 @@ RESULT_IMAGE_TEMPLATE = r"""
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; background: transparent; }
     body {
-      width: 760px;
-      padding: 30px;
+      width: 760px; padding: 24px;
       font-family: "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
       color: #17212b;
       background:
@@ -187,29 +200,29 @@ RESULT_IMAGE_TEMPLATE = r"""
     .card {
       overflow: hidden;
       border: 1px solid #a8d9ef;
-      border-radius: 24px;
+      border-radius: 20px;
       background: rgba(255, 255, 255, .94);
-      box-shadow: 0 18px 48px rgba(46, 122, 158, .18), inset 0 1px rgba(255,255,255,.8);
+      box-shadow: 0 12px 32px rgba(46, 122, 158, .16), inset 0 1px rgba(255,255,255,.8);
     }
     .header {
-      padding: 24px 30px 20px;
+      padding: 18px 24px 15px;
       border-bottom: 1px solid #c7e7f6;
       background: linear-gradient(90deg, #d9f3ff 0%, rgba(255,255,255,.92) 100%);
     }
-    .title { font-size: 30px; font-weight: 800; letter-spacing: 3px; color: #12658b; }
-    .subtitle { margin-top: 7px; font-size: 14px; color: #5d8193; letter-spacing: 2px; }
-    .content { padding: 25px 30px 30px; font-size: 21px; line-height: 1.72; }
-    .result-line { min-height: 35px; white-space: pre-wrap; overflow-wrap: anywhere; }
-    .spacer { height: 14px; }
-    .heading { margin: 10px 0 7px; font-weight: 800; color: #132b38; }
-    .heading-1 { font-size: 30px; } .heading-2 { font-size: 26px; } .heading-3 { font-size: 23px; }
+    .title { font-size: 26px; font-weight: 800; letter-spacing: 2px; color: #12658b; }
+    .subtitle { margin-top: 4px; font-size: 13px; color: #5d8193; letter-spacing: 1px; }
+    .content { padding: 18px 24px 22px; font-size: 18px; line-height: 1.55; }
+    .result-line { min-height: 28px; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .spacer { height: 10px; }
+    .heading { margin: 8px 0 5px; font-weight: 800; color: #132b38; }
+    .heading-1 { font-size: 26px; } .heading-2 { font-size: 22px; } .heading-3 { font-size: 19px; }
     strong { color: #101820; font-weight: 800; }
-    code { padding: 2px 7px; border-radius: 6px; color: #12658b; background: #e2f4fc; }
-    .bullet { margin-right: 10px; color: #2587b2; font-size: 13px; vertical-align: 2px; }
+    code { padding: 2px 6px; border-radius: 5px; color: #12658b; background: #e2f4fc; }
+    .bullet { margin-right: 8px; color: #2587b2; font-size: 12px; vertical-align: 2px; }
     .reward { color: #966300; } .experience { color: #08796f; }
     .cooldown { color: #176a9b; } .danger { color: #c42d43; }
     .section { color: #153746; font-weight: 800; }
-    .fish-prefix { padding: 1px 4px; margin-right: 1px; border-radius: 5px; font-weight: 750; }
+    .fish-prefix { padding: 1px 3px; margin-right: 1px; border-radius: 4px; font-weight: 750; }
     .fish-name, .rarity-label { font-weight: 800; }
     .obscured { color: #05090c; }
     .rarity-common { color: #222a30; }

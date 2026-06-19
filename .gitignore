@@ -52,6 +52,7 @@ dmypy.json
 .preview-*/
 docs/*preview*.html
 docs/*preview*.png
+docs/compact_preview/
 
 # IDEs
 .vscode/

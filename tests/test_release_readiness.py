@@ -33,9 +33,9 @@ class ReleaseReadinessTests(unittest.TestCase):
             plugin["version"],
             register_match.group(1),
         }
-        self.assertEqual(versions, {"V4.6.0"})
-        self.assertIn("version-V4.6.0", readme)
-        self.assertIn("### V4.6.0 更新摘要", readme)
+        self.assertEqual(versions, {"V4.6.1"})
+        self.assertIn("version-V4.6.1", readme)
+        self.assertIn("### V4.6.1 更新摘要", readme)
 
     def test_json_release_files_are_valid(self):
         plugin = json.loads(_read("plugin.json"))
