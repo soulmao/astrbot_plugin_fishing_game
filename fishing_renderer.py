@@ -208,12 +208,27 @@ FISHING_IMAGE_TEMPLATE = r"""
     body.failure, body.warning { width: 760px; }
     .sheet { overflow: hidden; border: 1px solid #a8d9ef; border-radius: 20px;
       background: rgba(255,255,255,.96); box-shadow: 0 12px 32px rgba(46,122,158,.16); }
+    body.greedy .sheet, body.cashout .sheet { border-color: #d0bbf7; box-shadow: 0 12px 32px rgba(91,45,181,.14); }
+    body.failure .sheet { border-color: #eeb8c1; box-shadow: 0 12px 32px rgba(155,30,52,.14); }
+    body.warning .sheet { border-color: #f0d9a8; box-shadow: 0 12px 32px rgba(168,115,0,.12); }
     .header { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px;
       padding: 18px 24px 15px; border-bottom: 1px solid #c7e7f6;
       background: linear-gradient(100deg, #caedff 0%, #eaf8ff 55%, #fff 100%); }
+    body.greedy .header, body.cashout .header { border-bottom-color: #dcc9ff; background: linear-gradient(100deg, #e6d8ff 0%, #f3edff 55%, #fff 100%); }
+    body.failure .header { border-bottom-color: #f3c1c9; background: linear-gradient(100deg, #ffd4db 0%, #ffeff1 55%, #fff 100%); }
+    body.warning .header { border-bottom-color: #f5deb3; background: linear-gradient(100deg, #ffecc2 0%, #fff8e8 55%, #fff 100%); }
     .title { font-size: 28px; font-weight: 900; color: #102a38; }
+    body.greedy .title, body.cashout .title { color: #5b2db5; }
+    body.failure .title { color: #9b1e34; }
+    body.warning .title { color: #7a5200; }
     .subtitle { margin-top: 4px; color: #54798b; font-size: 13px; }
+    body.greedy .subtitle, body.cashout .subtitle { color: #7c5ab8; }
+    body.failure .subtitle { color: #b05a6a; }
+    body.warning .subtitle { color: #9c7a3c; }
     .user { color: #176b98; font-weight: 800; font-size: 15px; }
+    body.greedy .user, body.cashout .user { color: #6b4fc0; }
+    body.failure .user { color: #9b4052; }
+    body.warning .user { color: #9a7b3c; }
     .body { padding: 14px 20px 18px; }
     .event-list { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; }
     .event { padding: 4px 8px; border-radius: 999px; background: #e7f6ff;
