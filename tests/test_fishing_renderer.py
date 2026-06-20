@@ -31,6 +31,18 @@ sys.modules.get(f"{PACKAGE_NAME}.fish_data") or _load_module(
 renderer = _load_module(f"{PACKAGE_NAME}.fishing_renderer", "fishing_renderer.py")
 
 
+class MockResearchUser:
+    def __init__(self, research=None, spendable=40000):
+        self.research = research or {}
+        self.spendable = spendable
+
+    def get_research(self):
+        return dict(self.research)
+
+    def get_spendable_exp(self):
+        return self.spendable
+
+
 class FishingRendererTests(unittest.TestCase):
     """覆盖普通垂钓、折叠渔获、贪婪和失败分支。"""
 
@@ -113,17 +125,59 @@ class FishingRendererTests(unittest.TestCase):
         self.assertEqual(warning["title"], "钓鱼冷却中")
         self.assertEqual(warning["subtitle"], "剩余 12分钟")
 
+    def test_research_card_builds_compact_progress_data(self):
+        state = {
+            "target_type": "combo", "target_name": "神话的北海巨妖",
+            "remaining": 21, "total": 30,
+        }
+        view = renderer.build_research_view(
+            MockResearchUser(state, 60000), "🔬 正在研究：北海巨妖", "奶小柒",
+        )
+        self.assertEqual(view["kind"], "active")
+        self.assertEqual(view["research"]["percent"], 30)
+        self.assertEqual(view["research"]["target_type"], "图鉴组合")
+        self.assertEqual(view["available_exp"], "60,000")
+        self.assertEqual(view["research"]["multiplier"], "8.5 倍")
+
+    def test_all_fishing_result_kinds_include_active_research(self):
+        state = {
+            "target_type": "prefix", "target_name": "神话的",
+            "remaining": 10, "total": 25,
+        }
+        samples = [
+            "🎣 钓鱼成功！\n普通的小杂鱼 💰5\n📈 经验 +10\n⏰ 冷却 1小时",
+            "🎣 第 2 层贪婪成功！\n🐟 额外钓上: 普通的小杂鱼 💰5\n🧿 【结晶】已膨胀至 20 金币（2 条渔获聚合）\n📈 当前累计经验: 20\n⚠️ 下次断线概率: 20%",
+            "🎣 收杆成功！\n🧿 结算层数: 2\n💰 +20 金币\n📈 +20 经验\n⏰ 冷却 1小时",
+            "钓鱼冷却中，剩余 12分钟",
+        ]
+        for text in samples:
+            with self.subTest(text=text.splitlines()[0]):
+                view = renderer.build_fishing_result_view(text, "玩家", state)
+                self.assertEqual(view["research"]["target"], "神话的")
+                self.assertEqual(view["research"]["percent"], 60)
+
+    def test_completed_research_is_visible_without_active_state(self):
+        text = "🎣 钓鱼成功！\n🔬 研究完成！成功发现目标“北海巨妖”"
+        view = renderer.build_fishing_result_view(text, "玩家")
+        self.assertTrue(view["research"]["completed"])
+        self.assertEqual(view["research"]["percent"], 100)
+
     def test_template_has_dedicated_fish_and_stat_cards(self):
         template = renderer.FISHING_IMAGE_TEMPLATE
         self.assertIn("fish-grid", template)
         self.assertIn("fish-grid.dense", template)
         self.assertIn("fishes|length <= 4", template)
         self.assertIn("body.greedy .stats", template)
-        self.assertIn("font-size: 40px", template)
+        self.assertIn("font-size: 36px", template)
         self.assertIn("kind != 'warning'", template)
         self.assertIn("body.warning .subtitle", template)
         self.assertIn("stat-value", template)
         self.assertIn("hidden_fishes", template)
+        self.assertIn("research-track", template)
+        self.assertIn("research-fill", template)
+        self.assertIn("当前加成", renderer.RESEARCH_IMAGE_TEMPLATE)
+        self.assertIn("min-height: 64px", template)
+        self.assertIn("RESEARCH_IMAGE_TEMPLATE", dir(renderer))
 
 
 if __name__ == "__main__":

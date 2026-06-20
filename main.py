@@ -29,14 +29,17 @@ from .gallery_renderer import (
     ACHIEVEMENTS_IMAGE_TEMPLATE, BAITS_IMAGE_TEMPLATE, COLLECTION_IMAGE_TEMPLATE,
     build_achievements_view, build_baits_view, build_collection_view,
 )
-from .fishing_renderer import FISHING_IMAGE_TEMPLATE, build_fishing_result_view
+from .fishing_renderer import (
+    FISHING_IMAGE_TEMPLATE, RESEARCH_IMAGE_TEMPLATE,
+    build_fishing_result_view, build_research_view,
+)
 from .llm_tools import (
     FishingHelpTool, FishingFishTool, FishingShopTool,
     FishingBagTool, FishingSellTool, FishingLevelTool,
     FishingCdTool, FishingBuyTool, FishingGiveTool,
     FishingRankTool, FishingMyRodsTool, FishingEquipTool,
     FishingMyBaitsTool, FishingEquipBaitTool, FishingShopRefreshTool,
-    FishingCollectionTool, FishingAchievementsTool,
+    FishingCollectionTool, FishingResearchTool, FishingAchievementsTool,
     FishingAuctionTool, FishingEnchantTool, FishingEnchantUpgradeTool,
     FishingDirectedEnchantTool, FishingUpgradeShopTool, FishingGreedyToggleTool,
     FishingGreedyContinueTool, FishingGreedyCashoutTool,
@@ -48,7 +51,7 @@ import html
 from .fuzzy_utils import extract_fuzzy_content, build_fuzzy_candidates
 
 
-@register("fishing_game", "AstrBot", "钓鱼游戏插件 - 群聊娱乐插件，支持钓鱼、背包、商店、赠送等完整经济系统", "V4.6.1")
+@register("fishing_game", "AstrBot", "钓鱼游戏插件 - 群聊娱乐插件，支持钓鱼、背包、商店、赠送等完整经济系统", "V4.7.0")
 class FishingGamePlugin(Star):
     def __init__(self, context: Context, config=None):
         super().__init__(context)
@@ -125,6 +128,7 @@ class FishingGamePlugin(Star):
             'cmd_bag': (self.info_cmds, 'cmd_bag'),
             'cmd_level': (self.info_cmds, 'cmd_level'),
             'cmd_collection': (self.info_cmds, 'cmd_collection'),
+            'cmd_research': (self.info_cmds, 'cmd_research'),
             'cmd_cd': (self.info_cmds, 'cmd_cd'),
             'cmd_rank': (self.info_cmds, 'cmd_rank'),
             # 经济系统
@@ -163,6 +167,7 @@ class FishingGamePlugin(Star):
             'cmd_rank': ['排行榜', '排名', 'rank', 'ranking', 'leaderboard', 'top'],
             'cmd_help': ['帮助', 'help', '命令', 'commands', '菜单', 'menu', 'helpme'],
             'cmd_collection': ['图鉴', '收集', 'collection', 'pokedex', '鱼类图鉴'],
+            'cmd_research': ['研究', '海洋研究', '研究鱼类', 'research', 'oceanresearch'],
             'cmd_myrods': ['我的钓竿', '我的鱼竿', '鱼竿', '钓竿', 'rods', 'myrods', 'fishingrods'],
             'cmd_equip_rod': ['装备钓竿', '装备鱼竿', '换钓竿', '换鱼竿', 'equip', 'equiprod', 'userod'],
             'cmd_mybaits': ['我的鱼饵', '鱼饵', 'baits', 'mybaits'],
@@ -202,6 +207,7 @@ class FishingGamePlugin(Star):
             '排行榜', 'rank',
             '帮助', 'help',
             '图鉴', 'collection',
+            '研究', 'research',
             # 社交系统
             '赠送', 'give',
             # 拍卖行
@@ -235,6 +241,7 @@ class FishingGamePlugin(Star):
             'cmd_greedy_toggle': [int],
             'cmd_greedy_continue': [],
             'cmd_greedy_cashout': [],
+            'cmd_research': [str],
         }
 
     def _fuzzy_match_command(self, word: str) -> tuple:
@@ -338,6 +345,7 @@ class FishingGamePlugin(Star):
             FishingEquipBaitTool(plugin=self),
             FishingShopRefreshTool(plugin=self),
             FishingCollectionTool(plugin=self),
+            FishingResearchTool(plugin=self),
             FishingAchievementsTool(plugin=self),
             FishingAuctionTool(plugin=self),
             FishingEnchantTool(plugin=self),
@@ -598,9 +606,21 @@ class FishingGamePlugin(Star):
                     else:
                         template_data = build_achievements_view(user, event.get_sender_name())
                         template = ACHIEVEMENTS_IMAGE_TEMPLATE
+            elif state.get("cmd_name") == "cmd_research":
+                user_id = event.get_sender_id()
+                async with self.storage.get_user_lock(user_id):
+                    user = await self.storage.get_user(user_id)
+                    template_data = build_research_view(
+                        user, state.get("command_result", text), event.get_sender_name(),
+                    )
+                template = RESEARCH_IMAGE_TEMPLATE
             elif state.get("cmd_name") in ("cmd_fish", "cmd_greedy_continue", "cmd_greedy_cashout"):
+                user_id = event.get_sender_id()
+                async with self.storage.get_user_lock(user_id):
+                    user = await self.storage.get_user(user_id)
+                    research_state = user.get_research()
                 template_data = build_fishing_result_view(
-                    state.get("command_result", text), event.get_sender_name(),
+                    state.get("command_result", text), event.get_sender_name(), research_state,
                 )
                 template = FISHING_IMAGE_TEMPLATE
 
@@ -740,6 +760,11 @@ class FishingGamePlugin(Star):
     async def cmd_collection(self, event: AstrMessageEvent):
         '''图鉴 - 查看已收集的鱼类图鉴进度'''
         async for r in self._route_cmd(event, 'cmd_collection'): yield r
+
+    @filter.command("研究", alias={"research"})
+    async def cmd_research(self, event: AstrMessageEvent, target: str = ""):
+        '''海洋研究 - 消耗安全经验定向研究尚未收集的鱼种或前缀'''
+        async for r in self._route_cmd(event, 'cmd_research', target): yield r
 
     # ---------- 社交系统 ----------
 

@@ -76,6 +76,9 @@ class GalleryRendererTests(unittest.TestCase):
         stats = {item["rarity"]: item for item in view["rarities"]}
         common_fish_count = sum(1 for fish in fish_data.FISH_TYPES if fish["rarity"] == "common")
         self.assertEqual(stats["common"]["total"], common_fish_count * len(fish_data.FISH_PREFIXES))
+        self.assertLessEqual(len(view["researchable"]), 5)
+        values = [int(item["value"].replace(",", "")) for item in view["researchable"]]
+        self.assertEqual(values, sorted(values, reverse=True))
 
     def test_achievements_view_contains_all_groups_and_caps_progress(self):
         user = UserData("achievement_user")
@@ -113,6 +116,8 @@ class GalleryRendererTests(unittest.TestCase):
         self.assertIn("grid-template-columns:repeat(3", renderer.BAITS_IMAGE_TEMPLATE)
         self.assertIn("grid-template-columns:repeat(4", renderer.COLLECTION_IMAGE_TEMPLATE)
         self.assertIn("最近点亮", renderer.COLLECTION_IMAGE_TEMPLATE)
+        self.assertIn("当前可研究鱼种", renderer.COLLECTION_IMAGE_TEMPLATE)
+        self.assertIn("repeat(5", renderer.COLLECTION_IMAGE_TEMPLATE)
         self.assertIn("body{width:1560px", renderer.ACHIEVEMENTS_IMAGE_TEMPLATE)
         self.assertIn("grid-template-columns:repeat(4", renderer.ACHIEVEMENTS_IMAGE_TEMPLATE)
         self.assertIn("achievement.reward_coins", renderer.ACHIEVEMENTS_IMAGE_TEMPLATE)

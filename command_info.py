@@ -1,5 +1,7 @@
 """信息查询命令模块"""
+import random
 import time
+import math
 
 from .commands_base import CommandBase
 from .utils import (
@@ -10,6 +12,7 @@ from .fish_data import (
     FISH_TYPES, FISH_PREFIXES, get_fish_by_id, get_prefix_by_id,
     get_level_info, get_next_level_exp, get_bait_prefix, get_bait_by_id,
     ENCHANT_TICKETS, ROD_SKILL_DESCRIPTIONS, calc_fish_value,
+    RESEARCH_CONFIG,
 )
 from .storage import StorageManager
 
@@ -20,7 +23,7 @@ class InfoCommands(CommandBase):
     async def cmd_help(self, event) -> str:
         """帮助命令"""
         fishing_cd = format_time(self.star.fishing_cooldown)
-        return f"""🎣 钓鱼游戏帮助
+        return f"""🎣 钓鱼游戏帮助 · V4.7.0
 
 📋 **命令列表：**
 
@@ -42,7 +45,15 @@ class InfoCommands(CommandBase):
   出售渔获获取金币（贪婪挂起期间被锁定，无法使用）
 
 📊 `/等级` 或 `/level`
-  查看当前等级和经验进度
+  查看当前等级和经验进度，最高 Lv.15「深海主宰」
+
+📖 `/图鉴` 或 `/collection`
+  查看 46 种鱼 × 15 种前缀的收集进度，以及当前可研究的 5 个最高价值鱼种
+
+🔬 `/研究 [品级/鱼名/前缀名/鱼名+前缀]` 或 `/research [目标]`
+  品级/鱼名研究鱼种，前缀名研究前缀；同时指定鱼名和前缀可锁定图鉴组合
+  未命中时研究倍率逐次提高，最后一次主动垂钓保底
+  不带目标查看进度；`/研究 取消` 可取消当前研究（经验不返还）
 
 ⏰ `/冷却` 或 `/cd`
   查看钓鱼和商店刷新的冷却状态
@@ -107,8 +118,10 @@ class InfoCommands(CommandBase):
 🐟 **游戏玩法：**
 • 初始获得 100 金币、木制钓竿、10条蚯蚓
 • 钓鱼获得渔获 → 卖鱼赚金币 → 购买更好的钓竿和鱼饵
-• 更好的钓竿/鱼饵 = 更高稀有度 + 更多经验
-• 升级解锁更强力的钓竿和鱼饵
+• 鱼池共 46 种鱼；稀有鱼自然权重约 21.55%，传说鱼约 1.39%
+• 更好的钓竿/鱼饵 = 更高稀有度、更多高价值前缀 + 更多经验
+• 多余经验可用于海洋研究：品级/鱼名研究鱼种，前缀名研究前缀，鱼名+前缀锁定组合
+• 等级上限为 Lv.15；升级可解锁装备，并积累不会导致掉级的安全研究经验
 • 高品质钓竿前缀自带词条技能（迅捷、幸运、丰收等）
 • 钓竿可附魔和升级技能，每次附魔价格倍增
 • 每日可赠送 10 次给好友
@@ -128,7 +141,7 @@ class InfoCommands(CommandBase):
 高品质钓竿前缀自带技能：
 • ⚡迅捷 - 减少钓鱼冷却时间
 • 🍀幸运 - 提升幸运事件触发概率
-• 🌾丰收 - 概率额外钓到一条鱼
+• 🌾丰收 - 概率获得额外渔获
 • 💎寻宝 - 概率获得额外金币
 • 🌊潮汐 - 概率本次钓鱼无需冷却
 • ✨神慧 - 获得额外经验加成
@@ -138,13 +151,13 @@ class InfoCommands(CommandBase):
 👻 **特殊前缀钓竿：**
 神秘的词缀，拥有独特机制：
 • 💰 贪婪的 - 【全部或一无所有】：钓上鱼后形成【贪欲结晶】，首层即享 1.2 倍收益。附魔词条只在首次激活时生效，后续 /贪婪 不会重复触发。可 /收杆 结算，或继续提高倍率；断线会清空结晶，修理费为当前金币的 2%，但不超过结晶价值的 10%。初始消耗 2 个鱼饵，结算后冷却延长 15%。
-• ♾️ 无尽贪婪的 - 更高风险、高收益的贪婪版本：首层享 1.4 倍收益，附魔词条同样只在首次激活时生效；后续成长更快，但断线率更高，返回文本会被打乱。初始消耗 3 个鱼饵，结算后冷却延长 30%。可用 `/切换贪婪` 切换，消耗 1000 金币
+• ♾️ 无尽贪婪的 - 更高风险、高收益的贪婪版本：首层享 1.4 倍收益，附魔词条同样只在首次激活时生效；后续成长更快，但断线率更高，金币越多时返回文字受到的黑色方块侵蚀越强。初始消耗 3 个鱼饵，结算后冷却延长 30%。可用 `/切换贪婪` 切换，消耗 1000 金币
 • 👻 诅咒的 - 附魔和升级仅需正常价格的 35%，但每次钓鱼有 8% 概率丢失一个附魔词条
 • ⚡ 迅捷的 - 冷却缩短 45%，20% 概率免冷却，但有 18% 概率失误
 • 📚 学徒的 - 经验收益显著提高，但寻宝金币收益降低 35%
 • 🎲 幸运方块的 - 更偏向获得随机技能，最多保留 6 个；满槽后可能强化已有词条，单条最高 25%
 • 👑 傲慢的 - 仅限金色/神级钓竿，保底稀有品质并提高传说/神话机会；必须使用珍稀（香料饵）及以上鱼饵
-• 💢 嫉妒的 - 每有一名等级更高的玩家，稀有度权重 +8%（最高 +64%）；传说/神话副作用与额外冷却的触发率均降为 15%
+• 💢 嫉妒的 - 每有一名等级更高的玩家，分级稀有度加成 +8%（最高 +64%）；传说与神话获得更强提升，副作用与额外冷却的触发率均为 15%
 
 🔧 **特种钓竿：**
 无法附加前缀的独特钓竿，不消耗鱼饵：
@@ -157,8 +170,6 @@ class InfoCommands(CommandBase):
 • 🎣 古龙收藏钓竿 - 极高幸运与全技能加成
 • 🐟 古龙收藏鱼类 - 售价远超普通传说鱼
 • 🪤 古龙收藏鱼饵 - 大幅加成随机事件触发率
-
-📖 `/图鉴` - 查看已收集的鱼类图鉴进度
 
 💡 **模糊命令支持**：
 • 支持常见口语化变体，例如 `/钓一下`、`/查看背包`、`/我的鱼竿`
@@ -173,6 +184,244 @@ class InfoCommands(CommandBase):
 • 物品ID 类别支持：鱼、钓竿、鱼饵、券、词条、前缀；也可直接输入中文名或 ID
 • 加钓竿示例：`/管理 加钓竿 523969851 rod_002 rod_pref_11 迅捷45% 幸运25% 7`
 • 完整列表请使用 `/管理 帮助`"""
+
+    @staticmethod
+    def _research_fish_unlocked(user, fish: dict) -> bool:
+        """检查鱼种是否能由当前等级和钓竿获得。"""
+        rod_id = user.current_rod.get("base_id", "")
+        min_levels = {"common": 1, "rare": 2, "legendary": 5, "mythic": 6}
+        if user.level < min_levels.get(fish.get("rarity"), 1):
+            return False
+        return fish.get("rarity") != "mythic" or rod_id in ("rod_004", "rod_005")
+
+    @staticmethod
+    def _research_prefix_unlocked(user, prefix: dict) -> bool:
+        """检查鱼名前缀是否能由当前等级和钓竿获得。"""
+        rod_id = user.current_rod.get("base_id", "")
+        if user.level < int(prefix.get("min_level", 1)):
+            return False
+        if prefix.get("requires_gold_rod") and rod_id not in ("rod_004", "rod_005"):
+            return False
+        if prefix.get("requires_divine_rod") and rod_id != "rod_005":
+            return False
+        if prefix.get("id") == "pref_015" and user.current_rod.get("prefix_id") != "rod_pref_13":
+            return False
+        return True
+
+    @classmethod
+    def _match_research_targets(cls, user, query: str) -> tuple:
+        """解析自然目标，返回研究类型、当前可达候选和其中未点亮候选。"""
+        normalized = "".join(str(query or "").strip().lower().split())
+        rarity_aliases = {
+            "常见": "common", "常见鱼": "common", "common": "common",
+            "稀有": "rare", "稀有鱼": "rare", "rare": "rare",
+            "传说": "legendary", "传说鱼": "legendary", "legendary": "legendary",
+            "神话": "mythic", "神话鱼": "mythic", "mythic": "mythic",
+        }
+        rarity = rarity_aliases.get(normalized)
+        fish_match = next((
+            fish for fish in FISH_TYPES
+            if fish["id"].lower() in normalized or fish["name"].lower() in normalized
+        ), None)
+        prefix_match = next((
+            prefix for prefix in FISH_PREFIXES
+            if prefix["id"].lower() in normalized
+            or prefix["name"].lower() in normalized
+            or (
+                fish_match
+                and prefix["name"].lower().rstrip("的") in normalized
+            )
+            or (
+                not rarity
+                and normalized == prefix["name"].lower().rstrip("的")
+            )
+        ), None)
+        collection = user.get_collection()
+        collected_fish = {key.split("#", 1)[0] for key in collection if "#" in key}
+        collected_prefixes = {key.split("#", 1)[1] for key in collection if "#" in key}
+
+        # 同时指定鱼和前缀（含“龙鱼 金色”及 ID 组合）才进入精确组合研究。
+        if fish_match and prefix_match:
+            candidates = [(fish_match, prefix_match, f"{prefix_match['name']}{fish_match['name']}")]
+            candidates = [item for item in candidates if cls._research_fish_unlocked(user, item[0])
+                          and cls._research_prefix_unlocked(user, item[1])]
+            unseen = [item for item in candidates if f"{item[0]['id']}#{item[1]['id']}" not in collection]
+            return "combo", candidates, unseen
+
+        if prefix_match:
+            available = [prefix_match] if cls._research_prefix_unlocked(user, prefix_match) else []
+            return "prefix", available, [p for p in available if p["id"] not in collected_prefixes]
+
+        if fish_match:
+            available = [fish_match] if cls._research_fish_unlocked(user, fish_match) else []
+            return "fish", available, [f for f in available if f["id"] not in collected_fish]
+
+        if rarity:
+            available = [fish for fish in FISH_TYPES
+                         if fish.get("rarity") == rarity and cls._research_fish_unlocked(user, fish)]
+            return "fish", available, [f for f in available if f["id"] not in collected_fish]
+        return "", [], []
+
+    @staticmethod
+    def _research_combo_cost(fish: dict, prefix: dict) -> tuple:
+        """组合费用按自然稀缺度在基础费用的 0.75～1.5 倍间浮动。"""
+        fish_cfg = RESEARCH_CONFIG["fish"][fish["rarity"]]
+        prefix_cfg = RESEARCH_CONFIG["prefix"][prefix["rarity"]]
+        max_fish_weight = max(float(item.get("weight", 0)) for item in FISH_TYPES)
+        max_prefix_weight = max(float(item.get("weight", 0)) for item in FISH_PREFIXES)
+        inverse = (
+            max_fish_weight / max(0.001, float(fish.get("weight", 0)))
+            * max_prefix_weight / max(0.001, float(prefix.get("weight", 0)))
+        )
+        scarcity_factor = min(1.5, max(0.75, 0.75 + math.log10(inverse) * 0.15))
+        cost = int(round(max(fish_cfg["cost"], prefix_cfg["cost"]) * scarcity_factor / 100)) * 100
+        return max(100, cost), max(
+            fish_cfg["attempts"], prefix_cfg["attempts"]
+        )
+
+    @staticmethod
+    def _research_single_cost(target_type: str, target: dict) -> tuple:
+        config = RESEARCH_CONFIG[target_type][target["rarity"]]
+        return config["cost"], config["attempts"]
+
+    @staticmethod
+    def _select_preferred_target(target_type: str, candidates: list, collection: dict):
+        """宽范围研究优先高价值目标，并优先完全未点亮的前缀。"""
+        if target_type == "fish":
+            score = lambda fish: float(fish.get("base_price", 0))
+        elif target_type == "prefix":
+            score = lambda prefix: float(prefix.get("price_multiplier", 0))
+        else:
+            collected_prefixes = {key.split("#", 1)[1] for key in collection if "#" in key}
+            score = lambda item: (
+                calc_fish_value(item[0]["id"], item[1]["id"], 1)
+                * (1.25 if item[1]["id"] not in collected_prefixes else 1.0)
+            )
+        best_score = max(score(item) for item in candidates)
+        return random.choice([item for item in candidates if score(item) == best_score])
+
+    @classmethod
+    def _research_availability(cls, user, state: dict) -> tuple:
+        """返回当前装备是否可完成研究，以及不可达时的明确需求。"""
+        fish = get_fish_by_id(state.get("fish_id") or state.get("target_id", ""))
+        prefix = get_prefix_by_id(state.get("prefix_id") or state.get("target_id", ""))
+        if state.get("target_type") in ("fish", "combo") and fish:
+            if not cls._research_fish_unlocked(user, fish):
+                return False, "需要金色或神级钓竿，并达到该鱼种等级要求"
+        if state.get("target_type") in ("prefix", "combo") and prefix:
+            if not cls._research_prefix_unlocked(user, prefix):
+                if prefix.get("id") == "pref_015":
+                    return False, "需要装备诅咒前缀钓竿"
+                if prefix.get("requires_divine_rod"):
+                    return False, "需要神级钓竿"
+                if prefix.get("requires_gold_rod"):
+                    return False, "需要金色或神级钓竿"
+                return False, f"需要达到 Lv.{prefix.get('min_level', 1)}"
+        return True, "当前装备可达成"
+
+    async def cmd_research(self, event, target: str = "") -> str:
+        """海洋研究：消费安全经验，定向提高未收集图鉴目标的出现率。"""
+        user_id = event.get_sender_id()
+        async with self._get_user_lock(user_id):
+            user = await self.storage.get_user(user_id)
+            action = str(target or "").strip()
+            active = user.get_research()
+
+            if action.lower() in ("取消", "cancel", "停止", "stop"):
+                if not active:
+                    return "🔬 当前没有进行中的海洋研究。"
+                old = user.clear_research()
+                await self.storage.save_user(user)
+                return f"🔬 已取消对“{old['target_name']}”的研究，已消耗经验不返还。"
+
+            if not action or action.lower() in ("状态", "status", "进度"):
+                spendable = user.get_spendable_exp()
+                if not active:
+                    return (
+                        "🔬 当前没有进行中的海洋研究。\n"
+                        f"📈 可用经验：{spendable:,}\n"
+                        "研究品级或鱼名可补鱼种，研究前缀名可补前缀；同时输入鱼名和前缀可锁定组合。"
+                    )
+                reachable, requirement = self._research_availability(user, active)
+                reach_text = "✅ 当前装备可达成" if reachable else f"⏸️ 当前装备不可达成：{requirement}"
+                return (
+                    f"🔬 正在研究：{active['target_name']}\n"
+                    f"🎯 剩余保底：{active['remaining']}/{active['total']} 次主动垂钓\n"
+                    f"📚 匹配范围剩余：{active.get('remaining_targets', 1)} 个未点亮目标\n"
+                    f"{reach_text}\n"
+                    f"📈 可用经验：{spendable:,}\n"
+                    "提示：额外渔获不会重复消耗研究次数。"
+                )
+
+            if active:
+                return (
+                    f"❌ 当前正在研究“{active['target_name']}”，剩余 {active['remaining']} 次。\n"
+                    "请先使用 /研究 取消。"
+                )
+
+            target_type, available, unseen = self._match_research_targets(user, action)
+            if not available:
+                return (
+                    "❌ 没有匹配到当前可研究的目标。\n"
+                    "可以输入：传说、神话、龙鱼、神话的、龙鱼 金色，或 fish_011#pref_013。"
+                )
+            if not unseen:
+                labels = {"fish": "鱼种", "prefix": "前缀", "combo": "组合"}
+                return f"✅ “{action}”对应的{labels[target_type]}已经点亮。"
+
+            spendable = user.get_spendable_exp()
+            affordable = []
+            for candidate in unseen:
+                if target_type == "combo":
+                    cost, attempts = self._research_combo_cost(candidate[0], candidate[1])
+                else:
+                    cost, attempts = self._research_single_cost(target_type, candidate)
+                if cost <= spendable:
+                    affordable.append((candidate, cost, attempts))
+            if not affordable:
+                costs = [
+                    self._research_combo_cost(item[0], item[1])[0]
+                    if target_type == "combo" else self._research_single_cost(target_type, item)[0]
+                    for item in unseen
+                ]
+                min_cost = min(costs)
+                return (
+                    f"❌ 可安全消费的经验不足，至少需要 {min_cost:,}，当前仅 {spendable:,}。\n"
+                    "研究不会消耗当前等级门槛以内的经验，因此不会导致降级。"
+                )
+
+            chosen = self._select_preferred_target(
+                target_type, [item[0] for item in affordable], user.get_collection()
+            )
+            cost, attempts = next(
+                (item_cost, item_attempts) for item, item_cost, item_attempts in affordable
+                if item == chosen
+            )
+            if not user.spend_exp(cost):
+                return "❌ 研究经验扣除失败，请重新查询当前经验。"
+            if target_type == "combo":
+                fish, prefix, target_name = chosen
+                target_rarity = max(
+                    (fish["rarity"], prefix["rarity"]),
+                    key=lambda rarity: ("common", "rare", "legendary", "mythic").index(rarity),
+                )
+                user.start_research_combo(
+                    fish["id"], prefix["id"], target_name, action, cost, attempts,
+                    target_rarity, len(unseen),
+                )
+            else:
+                target_name = chosen["name"]
+                user.start_research(
+                    target_type, chosen["id"], target_name, cost, attempts,
+                    action, chosen["rarity"], len(unseen),
+                )
+            await self.storage.save_user(user)
+            type_name = {"fish": "鱼种", "prefix": "前缀", "combo": "图鉴组合"}[target_type]
+            return (
+                f"🔬 已从“{action}”中选定未点亮{type_name}：{target_name}\n"
+                f"📈 消耗经验：{cost:,}（等级保持 Lv.{user.level}）\n"
+                f"🎯 接下来 {attempts} 次主动垂钓获得递增研究加成，最后一次保底。"
+            )
     
     async def cmd_bag(self, event) -> str:
         """背包命令"""
@@ -339,7 +588,10 @@ class InfoCommands(CommandBase):
             rarity_items = {"common": [], "rare": [], "legendary": [], "mythic": []}
             
             for key, info in collection.items():
-                fish_id, prefix_id = key.split("#")
+                parts = key.split("#", 1)
+                if len(parts) != 2:
+                    continue
+                fish_id, prefix_id = parts
                 fish = get_fish_by_id(fish_id)
                 prefix = get_prefix_by_id(prefix_id)
                 if fish and prefix:
@@ -364,13 +616,41 @@ class InfoCommands(CommandBase):
                 tot = rarity_totals.get(rarity, 0)
                 pct = (cnt / tot * 100) if tot > 0 else 0
                 result += f"\n{rarity_emojis[rarity]} {rarity_names[rarity]}: {cnt}/{tot} ({pct:.1f}%)"
+
+            collected_fish = {
+                key.split("#", 1)[0] for key in collection if "#" in key
+            }
+            available_prefixes = [
+                prefix for prefix in FISH_PREFIXES
+                if self._research_prefix_unlocked(user, prefix)
+            ]
+            researchable = []
+            for fish in FISH_TYPES:
+                cost, _ = self._research_single_cost("fish", fish)
+                if (fish["id"] in collected_fish or cost > user.get_spendable_exp()
+                        or not self._research_fish_unlocked(user, fish)):
+                    continue
+                best_value = max(
+                    (calc_fish_value(fish["id"], prefix["id"], 1)
+                     for prefix in available_prefixes),
+                    default=int(fish.get("base_price", 0)),
+                )
+                researchable.append((best_value, fish["name"], cost))
+            researchable.sort(reverse=True)
+            if researchable:
+                result += "\n\n🔬 当前可研究鱼种（按最高价值）:"
+                for value, fish_name, cost in researchable[:5]:
+                    result += f"\n  • {fish_name} · 最高 {value:,} 金币 · 需 {cost:,} 经验"
             
             # 显示最近收集的鱼类（按首次获得时间排序）
             sorted_items = sorted(collection.items(), key=lambda x: x[1].get("first_at", 0), reverse=True)
             if sorted_items:
                 result += "\n\n📜 最近收集:"
                 for key, info in sorted_items[:10]:
-                    fish_id, prefix_id = key.split("#")
+                    parts = key.split("#", 1)
+                    if len(parts) != 2:
+                        continue
+                    fish_id, prefix_id = parts
                     fish = get_fish_by_id(fish_id)
                     prefix = get_prefix_by_id(prefix_id)
                     if fish and prefix:

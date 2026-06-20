@@ -41,6 +41,14 @@ calc_item_value = utils.calc_item_value
 parse_directed_enchant_id = utils.parse_directed_enchant_id
 
 from astrbot_plugin_fishing_game.models import UserData
+from astrbot_plugin_fishing_game.fish_data import (
+    FISH_TYPES,
+    LEVELS,
+    apply_rarity_bonus,
+    calc_bait_value,
+    get_level_info,
+    get_next_level_exp,
+)
 
 
 class ItemAuctionTests(unittest.TestCase):
@@ -115,6 +123,86 @@ class ShopQuantityTests(unittest.TestCase):
 
     def test_single_bait_quantity(self):
         self.assertEqual(self._simulate_buy_quantity(1, 3), 3)
+
+
+class BaitBalanceTests(unittest.TestCase):
+    """验证鱼饵真实单价和分级稀有度权重。"""
+
+    def test_bait_value_uses_package_quantity(self):
+        self.assertEqual(calc_bait_value("bait_001", "bait_pref_02", 5), 10)
+        self.assertEqual(calc_bait_value("bait_002", "bait_pref_02", 3), 30)
+        self.assertEqual(calc_bait_value("bait_003", "bait_pref_02", 2), 80)
+        self.assertEqual(calc_bait_value("bait_004", "bait_pref_02", 1), 200)
+
+    def test_bait_value_handles_partial_packages(self):
+        self.assertEqual(calc_bait_value("bait_001", "bait_pref_02", 1), 2)
+        self.assertEqual(calc_bait_value("bait_002", "bait_pref_03", 1), 13)
+
+    def test_rarity_bonus_favors_higher_tiers(self):
+        bonus = 0.35
+        self.assertEqual(apply_rarity_bonus(10, "common", bonus), 10)
+        self.assertAlmostEqual(apply_rarity_bonus(10, "rare", bonus), 18.75)
+        self.assertAlmostEqual(apply_rarity_bonus(10, "legendary", bonus), 38)
+        self.assertAlmostEqual(apply_rarity_bonus(10, "mythic", bonus), 62.5)
+        self.assertGreater(
+            apply_rarity_bonus(10, "legendary", bonus, prefix=True),
+            apply_rarity_bonus(10, "rare", bonus, prefix=True),
+        )
+
+    def test_divine_rod_rarity_bonus_is_visible(self):
+        def probability(rarities, bonus):
+            weights = [
+                apply_rarity_bonus(fish["weight"], fish["rarity"], bonus)
+                for fish in FISH_TYPES
+            ]
+            total = sum(weights)
+            return sum(
+                weight for fish, weight in zip(FISH_TYPES, weights)
+                if fish["rarity"] in rarities
+            ) / total
+
+        baseline_high = probability({"rare", "legendary", "mythic"}, 0.0)
+        divine_high = probability({"rare", "legendary", "mythic"}, 0.35)
+        divine_legendary = probability({"legendary"}, 0.35)
+        divine_mythic = probability({"mythic"}, 0.35)
+        self.assertGreater(divine_high - baseline_high, 0.10)
+        self.assertGreater(divine_legendary, 0.02)
+        self.assertGreater(divine_mythic, 0.01)
+
+
+class FishPoolAndLevelExpansionTests(unittest.TestCase):
+    """锁定扩充后的鱼池结构、自然占比与 15 级边界。"""
+
+    def test_fish_ids_and_names_are_unique(self):
+        self.assertEqual(len(FISH_TYPES), 46)
+        self.assertEqual(len({fish["id"] for fish in FISH_TYPES}), len(FISH_TYPES))
+        self.assertEqual(len({fish["name"] for fish in FISH_TYPES}), len(FISH_TYPES))
+
+    def test_rare_and_legendary_pool_share_is_increased(self):
+        counts = {
+            rarity: sum(fish["rarity"] == rarity for fish in FISH_TYPES)
+            for rarity in ("rare", "legendary")
+        }
+        self.assertEqual(counts, {"rare": 16, "legendary": 10})
+        total_weight = sum(float(fish["weight"]) for fish in FISH_TYPES)
+        rare_share = sum(fish["weight"] for fish in FISH_TYPES if fish["rarity"] == "rare") / total_weight
+        legendary_share = sum(fish["weight"] for fish in FISH_TYPES if fish["rarity"] == "legendary") / total_weight
+        self.assertGreaterEqual(rare_share, 0.20)
+        self.assertGreaterEqual(legendary_share, 0.013)
+
+    def test_level_cap_is_15_and_exp_curve_is_monotonic(self):
+        self.assertEqual(LEVELS[-1]["level"], 15)
+        self.assertEqual(get_level_info(15)["name"], "深海主宰")
+        self.assertIsNone(get_next_level_exp(15))
+        self.assertEqual(
+            [level["exp_required"] for level in LEVELS],
+            sorted(level["exp_required"] for level in LEVELS),
+        )
+        user = UserData("level_cap")
+        user._data.update({"level": 12, "exp": 6400000})
+        upgraded, level = user.add_exp(0)
+        self.assertTrue(upgraded)
+        self.assertEqual(level, 15)
 
 
 class AuctionItemDataTests(unittest.TestCase):

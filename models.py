@@ -6,7 +6,7 @@ from .fish_data import (
     LEVELS, ROD_BASES, ROD_PREFIXES, BAIT_BASES, BAIT_PREFIXES,
     calc_rod_value, calc_bait_value, calc_fish_value,
     get_rod_prefix, get_prefix_by_id, get_fish_by_id, get_bait_by_id,
-    get_rod_builtin_skills,
+    get_rod_builtin_skills, get_level_info,
     ENCHANT_CONFIG, ENCHANT_TICKETS, ACHIEVEMENTS,
     DIRECTED_ENCHANT_CONFIG, SHOP_UPGRADE_CONFIG,
 )
@@ -65,6 +65,9 @@ class UserData:
         # 贪婪状态机
         if "greedy_state" not in self._data:
             self._data["greedy_state"] = None
+        # 海洋研究状态
+        if "research_state" not in self._data:
+            self._data["research_state"] = None
 
     def _default_data(self) -> Dict:
         """默认玩家数据"""
@@ -110,6 +113,8 @@ class UserData:
             "shop_level": 0,
             # 贪婪状态机（挂起状态）
             "greedy_state": None,
+            # 海洋研究（经验消耗型定向图鉴目标）
+            "research_state": None,
         }
 
     def to_dict(self) -> Dict:
@@ -149,6 +154,18 @@ class UserData:
             self._data["level"] = new_level
             return True, new_level
         return False, self.level
+
+    def get_spendable_exp(self) -> int:
+        """返回可安全消费的经验；保留当前等级最低经验，不允许消费导致掉级。"""
+        level_floor = get_level_info(self.level)["exp_required"]
+        return max(0, self.exp - level_floor)
+
+    def spend_exp(self, amount: int) -> bool:
+        """安全消费经验，成功时保持当前等级不变。"""
+        if amount <= 0 or self.get_spendable_exp() < amount:
+            return False
+        self._data["exp"] = self.exp - amount
+        return True
 
     def _calc_level(self) -> int:
         """根据经验计算等级"""
@@ -552,6 +569,66 @@ class UserData:
     def get_collection_count(self) -> int:
         """获取已收集的种类数量"""
         return len(self._data.get("collection", {}))
+
+    # 海洋研究
+    def get_research(self) -> dict:
+        """返回当前海洋研究状态副本。"""
+        state = self._data.get("research_state")
+        return dict(state) if isinstance(state, dict) else {}
+
+    def start_research(self, target_type: str, target_id: str, target_name: str,
+                       cost: int, attempts: int, query: str = "",
+                       target_rarity: str = "common", remaining_targets: int = 1) -> None:
+        """开始鱼种或前缀研究。"""
+        self._data["research_state"] = {
+            "target_type": target_type,
+            "target_id": target_id,
+            "target_name": target_name,
+            "query": query,
+            "target_rarity": target_rarity,
+            "remaining_targets": max(0, int(remaining_targets)),
+            "cost": int(cost),
+            "total": int(attempts),
+            "remaining": int(attempts),
+            "started_at": int(time.time()),
+        }
+
+    def start_research_combo(self, fish_id: str, prefix_id: str, target_name: str,
+                             query: str, cost: int, attempts: int,
+                             target_rarity: str = "common",
+                             remaining_targets: int = 1) -> None:
+        """开始研究一个尚未点亮的鱼种与前缀组合。"""
+        self._data["research_state"] = {
+            "target_type": "combo",
+            "fish_id": fish_id,
+            "prefix_id": prefix_id,
+            "target_name": target_name,
+            "query": query,
+            "target_rarity": target_rarity,
+            "remaining_targets": max(0, int(remaining_targets)),
+            "cost": int(cost),
+            "total": int(attempts),
+            "remaining": int(attempts),
+            "started_at": int(time.time()),
+        }
+
+    def advance_research(self, caught: bool) -> dict:
+        """推进一次研究；命中目标时自动完成并清空状态。"""
+        state = self._data.get("research_state")
+        if not isinstance(state, dict):
+            return {}
+        state["remaining"] = max(0, int(state.get("remaining", 0)) - 1)
+        update = dict(state)
+        update["completed"] = bool(caught)
+        if caught:
+            self._data["research_state"] = None
+        return update
+
+    def clear_research(self) -> dict:
+        """取消并返回原研究状态；已消耗经验不返还。"""
+        state = self.get_research()
+        self._data["research_state"] = None
+        return state
 
     # 附魔券系统
     def add_enchant_ticket(self, ticket_id: str, count: int = 1):

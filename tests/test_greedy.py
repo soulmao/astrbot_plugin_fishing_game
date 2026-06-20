@@ -34,12 +34,16 @@ _load_module("astrbot_plugin_fishing_game.utils", "utils.py")
 _load_module("astrbot_plugin_fishing_game.storage", "storage.py")
 _load_module("astrbot_plugin_fishing_game.commands_base", "commands_base.py")
 command_fishing = _load_module("astrbot_plugin_fishing_game.command_fishing", "command_fishing.py")
+command_info = _load_module("astrbot_plugin_fishing_game.command_info", "command_info.py")
 
 from astrbot_plugin_fishing_game.models import UserData
-from astrbot_plugin_fishing_game.command_fishing import FishingCommands, GREEDY_CONFIG
+from astrbot_plugin_fishing_game.command_fishing import (
+    FishingCommands, GREEDY_CONFIG, is_voyage_bait_supplied,
+)
+from astrbot_plugin_fishing_game.command_info import InfoCommands
 from astrbot_plugin_fishing_game.fish_data import (
     get_rod_prefix, calc_rod_value, SPECIAL_PREFIX_BALANCE, SPECIAL_ROD_BALANCE,
-    get_rod_builtin_skills, get_effective_rod_skills,
+    get_rod_builtin_skills, get_effective_rod_skills, get_fish_by_id,
 )
 from astrbot_plugin_fishing_game.utils import calc_enchant_price
 
@@ -117,6 +121,10 @@ class GreedyStateMachineTests(unittest.TestCase):
         self.assertFalse(user.is_greedy_active())
         self.assertIsNone(user.greedy_state)
 
+    def test_voyage_supply_saves_every_fifth_bait(self):
+        supplied = [attempt for attempt in range(1, 11) if is_voyage_bait_supplied(attempt)]
+        self.assertEqual(supplied, [5, 10])
+
     def test_update_without_active_returns_false(self):
         user = UserData("u1")
         self.assertFalse(user.update_greedy_chip({}, stack_delta=1))
@@ -126,6 +134,206 @@ class GreedyStateMachineTests(unittest.TestCase):
         self.assertFalse(user.add_coins(-100))
         self.assertEqual(user.coins, 100)  # 默认值不变
 
+
+class ResearchModelTests(unittest.TestCase):
+    """海洋研究经验安全与状态迁移。"""
+
+    def test_spend_exp_never_crosses_level_floor(self):
+        user = UserData("research_user")
+        user._data.update({"level": 10, "exp": 180000})
+        self.assertEqual(user.get_spendable_exp(), 60000)
+        self.assertFalse(user.spend_exp(60001))
+        self.assertTrue(user.spend_exp(60000))
+        self.assertEqual(user.exp, 120000)
+        self.assertEqual(user.level, 10)
+
+    def test_research_state_roundtrip_and_completion(self):
+        user = UserData("research_user")
+        user.start_research("fish", "fish_036", "北海巨妖", 60000, 30)
+        self.assertEqual(user.get_research()["remaining"], 30)
+        update = user.advance_research(False)
+        self.assertEqual(update["remaining"], 29)
+        update = user.advance_research(True)
+        self.assertTrue(update["completed"])
+        self.assertFalse(user.get_research())
+
+    def test_combo_research_state_records_exact_collection_target(self):
+        user = UserData("research_user")
+        user.start_research_combo(
+            "fish_011", "pref_013", "神话的龙鱼", "龙鱼", 100000, 50,
+        )
+        state = user.get_research()
+        self.assertEqual(state["target_type"], "combo")
+        self.assertEqual(state["fish_id"], "fish_011")
+        self.assertEqual(state["prefix_id"], "pref_013")
+        self.assertEqual(state["query"], "龙鱼")
+
+
+class ResearchFishingTests(unittest.TestCase):
+    """研究加权、保底和主动垂钓次数测试。"""
+
+    def setUp(self):
+        self.commands = FishingCommands(MockStar(), MockStorage())
+        self.user = UserData("research_fisher")
+        self.user._data["level"] = 10
+        self.rod = {"base_id": "rod_005", "prefix_id": "rod_pref_03", "skills": {}}
+        self.bait = {"base_id": "bait_001", "prefix_id": "bait_pref_02"}
+
+    def test_last_attempt_guarantees_fish(self):
+        self.user.start_research("fish", "fish_036", "北海巨妖", 60000, 1)
+        result = self.commands._do_fish_once(self.user, self.rod, self.bait)
+        self.assertEqual(result["fish_id"], "fish_036")
+        self.assertTrue(result["research_update"]["completed"])
+        self.assertFalse(self.user.get_research())
+
+    def test_last_attempt_guarantees_prefix(self):
+        self.user.start_research("prefix", "pref_013", "神话的", 100000, 1)
+        result = self.commands._do_fish_once(self.user, self.rod, self.bait)
+        self.assertEqual(result["prefix_id"], "pref_013")
+        self.assertTrue(result["research_update"]["completed"])
+
+    def test_prefix_guarantee_overrides_cursed_random_result(self):
+        cursed_rod = {"base_id": "rod_005", "prefix_id": "rod_pref_13", "skills": {}}
+        self.user.start_research("prefix", "pref_013", "神话的", 100000, 1)
+        with patch("random.random", return_value=0.0):
+            result = self.commands._do_fish_once(self.user, cursed_rod, self.bait)
+        self.assertEqual(result["prefix_id"], "pref_013")
+        self.assertTrue(result["research_update"]["completed"])
+
+    def test_combo_last_attempt_guarantees_exact_collection_entry(self):
+        self.user.start_research_combo(
+            "fish_036", "pref_013", "神话的北海巨妖", "神话", 100000, 1,
+        )
+        result = self.commands._do_fish_once(self.user, self.rod, self.bait)
+        self.assertEqual((result["fish_id"], result["prefix_id"]), ("fish_036", "pref_013"))
+        self.assertTrue(result["research_update"]["completed"])
+
+    def test_extra_catches_do_not_advance_research(self):
+        self.user.start_research("fish", "fish_036", "北海巨妖", 60000, 30)
+        with patch("random.choices", side_effect=lambda sequence, **kwargs: [sequence[0]]):
+            self.commands._do_fish_once(
+                self.user, self.rod, self.bait, advance_research=True,
+            )
+            self.commands._do_fish_once(
+                self.user, self.rod, self.bait, advance_research=False,
+            )
+        self.assertEqual(self.user.get_research()["remaining"], 29)
+
+    def test_unavailable_target_pauses_without_consuming_attempt(self):
+        weak_rod = {"base_id": "rod_002", "prefix_id": "rod_pref_03", "skills": {}}
+        self.user.start_research("fish", "fish_036", "北海巨妖", 60000, 30)
+        result = self.commands._do_fish_once(self.user, weak_rod, self.bait)
+        self.assertEqual(self.user.get_research()["remaining"], 30)
+        self.assertTrue(result["research_update"]["paused"])
+
+    def test_research_multiplier_grows_after_each_miss(self):
+        self.user.start_research(
+            "fish", "fish_036", "北海巨妖", 60000, 30,
+            target_rarity="mythic",
+        )
+        self.user._data["research_state"]["remaining"] = 25
+        captured = {}
+
+        def choose(sequence, weights, k):
+            captured["weights"] = weights
+            return [sequence[0]]
+
+        pool = [
+            ({"id": "fish_001", "rarity": "common"}, 10.0),
+            ({"id": "fish_036", "rarity": "mythic"}, 1.0),
+        ]
+        with patch("random.choices", side_effect=choose):
+            self.commands._choose_with_research(self.user, pool, "fish", True)
+        self.assertEqual(captured["weights"][1], 12.5)
+
+
+class ResearchCommandTests(unittest.IsolatedAsyncioTestCase):
+    """研究命令启动、查询、取消和重复目标检查。"""
+
+    async def test_start_status_and_cancel_research(self):
+        commands = InfoCommands(MockStar(), MockStorage())
+        user = await commands.storage.get_user("u1")
+        user._data.update({
+            "level": 10, "exp": 200000,
+            "current_rod": {"base_id": "rod_005", "prefix_id": "rod_pref_03"},
+        })
+        event = make_event()
+        result = await commands.cmd_research(event, "fish_036")
+        self.assertIn("北海巨妖", result)
+        self.assertEqual(user.exp, 140000)
+        self.assertEqual(user.level, 10)
+        status = await commands.cmd_research(event)
+        self.assertIn("剩余保底：30/30", status)
+        cancelled = await commands.cmd_research(event, "取消")
+        self.assertIn("已取消", cancelled)
+        self.assertFalse(user.get_research())
+
+    async def test_collected_fish_species_does_not_start_duplicate_research(self):
+        commands = InfoCommands(MockStar(), MockStorage())
+        user = await commands.storage.get_user("u1")
+        user._data.update({"level": 10, "exp": 200000})
+        user.add_to_collection("fish_007", "pref_001")
+        result = await commands.cmd_research(make_event(), "鲈鱼")
+        self.assertIn("鱼种已经点亮", result)
+        self.assertFalse(user.get_research())
+
+    async def test_rarity_query_selects_unseen_fish_from_that_rarity(self):
+        commands = InfoCommands(MockStar(), MockStorage())
+        user = await commands.storage.get_user("u1")
+        user._data.update({
+            "level": 10, "exp": 300000,
+            "current_rod": {"base_id": "rod_005", "prefix_id": "rod_pref_03"},
+        })
+        with patch.object(command_info.random, "choice", side_effect=lambda items: items[0]):
+            await commands.cmd_research(make_event(), "传说")
+        state = user.get_research()
+        self.assertEqual(state["target_type"], "fish")
+        self.assertEqual(get_fish_by_id(state["target_id"])["rarity"], "legendary")
+
+    async def test_prefix_query_selects_unseen_fish_with_that_prefix(self):
+        commands = InfoCommands(MockStar(), MockStorage())
+        user = await commands.storage.get_user("u1")
+        user._data.update({
+            "level": 12, "exp": 950000,
+            "current_rod": {"base_id": "rod_005", "prefix_id": "rod_pref_03"},
+        })
+        with patch.object(command_info.random, "choice", side_effect=lambda items: items[0]):
+            await commands.cmd_research(make_event(), "神话的")
+        self.assertEqual(user.get_research()["target_type"], "prefix")
+        self.assertEqual(user.get_research()["target_id"], "pref_013")
+
+    async def test_fish_and_prefix_words_lock_exact_combo(self):
+        commands = InfoCommands(MockStar(), MockStorage())
+        user = await commands.storage.get_user("u1")
+        user._data.update({
+            "level": 12, "exp": 950000,
+            "current_rod": {"base_id": "rod_005", "prefix_id": "rod_pref_03"},
+        })
+        await commands.cmd_research(make_event(), "龙鱼 金色")
+        state = user.get_research()
+        self.assertEqual(state["target_type"], "combo")
+        self.assertEqual((state["fish_id"], state["prefix_id"]), ("fish_011", "pref_007"))
+
+    async def test_status_explains_equipment_mismatch(self):
+        commands = InfoCommands(MockStar(), MockStorage())
+        user = await commands.storage.get_user("u1")
+        user._data.update({"level": 12, "exp": 950000})
+        user.start_research("prefix", "pref_013", "神话的", 100000, 50)
+        status = await commands.cmd_research(make_event())
+        self.assertIn("当前装备不可达成", status)
+        self.assertIn("需要神级钓竿", status)
+
+    async def test_full_name_selects_exact_unseen_combo(self):
+        commands = InfoCommands(MockStar(), MockStorage())
+        user = await commands.storage.get_user("u1")
+        user._data.update({
+            "level": 12, "exp": 950000,
+            "current_rod": {"base_id": "rod_005", "prefix_id": "rod_pref_03"},
+        })
+        result = await commands.cmd_research(make_event(), "神话的龙鱼")
+        state = user.get_research()
+        self.assertIn("神话的龙鱼", result)
+        self.assertEqual((state["fish_id"], state["prefix_id"]), ("fish_011", "pref_013"))
 
 class GreedyPureLogicTests(unittest.TestCase):
     """不依赖实例状态或 I/O 的纯函数逻辑"""

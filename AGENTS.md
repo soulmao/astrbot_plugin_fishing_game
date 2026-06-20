@@ -11,7 +11,7 @@
 
 - **插件名**: `fishing_game`
 - **显示名称**: 钓鱼游戏
-- **版本**: `V4.6.1`（`metadata.yaml`、`plugin.json`、`main.py` 中 `@register` 已统一）
+- **版本**: `V4.7.0`（`metadata.yaml`、`plugin.json`、`main.py` 中 `@register` 已统一）
 - **作者**: AstrBot
 - **依赖框架**: AstrBot >= 4.9.2
 - **运行环境**: Python 3.9+
@@ -34,7 +34,8 @@
 ### 项目特点
 
 - 命令式交互：所有命令通过 `main.py` 中 `@filter.command` 装饰器注册。
-- LLM 集成：注册了 25 个 FunctionTool，支持自然语言多步 tool calling。
+- LLM 集成：注册了 26 个 FunctionTool，支持自然语言多步 tool calling。
+- 海洋研究：安全消费当前等级门槛以上的经验，支持鱼种、前缀及完整组合三类目标，按稀有度提供递增倍率与最终保底。
 - 数据持久化：基于 AstrBot 的 K-V 存储（`star.get_kv_data` / `star.put_kv_data`）。
 - 并发安全：每个用户独立 `asyncio.Lock`，赠送与拍卖购买场景按 user_id 排序加锁防止死锁。
 - 定时任务：每日 0 点重置用户赠送次数，每小时检查拍卖行过期物品。
@@ -43,8 +44,9 @@
 - 游戏结果图片：精确命令、模糊命令和调用过本插件 FunctionTool 的最终 LLM 回复都会图片化，失败时回退文本。
 - 背包图片：使用专用结构化模板，包含经验进度条、钓竿技能卡片，以及按库存总价值降序、最多六十种的标签式渔获展示。
 - 市场图片：商店使用四列分类配色商品卡，拍卖行使用三列交易卡；列表和搜索结果保留价格、卖家、剩余时间与操作编号。
-- 收藏图片：“我的鱼饵”完整展示效果与当前装备，图鉴展示稀有度进度和最近点亮，成就按类别完整展示全部目标。
-- 钓鱼图片：普通钓鱼、贪婪挑战、收杆结算及失败状态使用专用结构化模板。
+- 收藏图片：“我的鱼饵”完整展示效果与当前装备，图鉴展示稀有度进度、五个高价值可研究鱼种和最近点亮，成就按类别完整展示全部目标。
+- 钓鱼图片：普通钓鱼、贪婪挑战、收杆结算及失败状态使用高密度结构化模板；进行中的研究以进度条嵌入所有钓鱼结果。
+- 研究图片：`/研究` 使用独立紧凑卡片，展示目标、可用经验、已完成次数与保底进度条。
 
 ---
 
@@ -78,7 +80,7 @@
 │ 表现层 (main.py)                             │
 │  - FishingGamePlugin（Star 子类）            │
 │  - @filter.command 命令注册与统一路由        │
-│  - LLM FunctionTool 注册（25 个）            │
+│  - LLM FunctionTool 注册（26 个）            │
 │  - 定时任务调度（每日刷新、拍卖行过期检查）  │
 │  - LLM 彩色结果图 / 贪婪方块 / 胡萝卜猪叫声  │
 │  - 模糊命令入口（@filter.regex 兜底）        │
@@ -135,27 +137,27 @@
 | 文件 | 行数（约） | 职责 |
 |------|-----------|------|
 | `__init__.py` | 4 | Python 包入口，导出 `FishingGamePlugin` |
-| `main.py` | 840 | 插件生命周期、命令路由、LLM 工具注册、定时任务、模糊命令入口、图片结果装饰 |
+| `main.py` | 844 | 插件生命周期、命令路由、LLM 工具注册、定时任务、模糊命令入口、图片结果装饰 |
 | `commands_base.py` | 14 | `CommandBase` 基类，提供用户级锁 |
-| `command_fishing.py` | 1072 | 钓鱼核心（随机算法、技能特效、幸运事件、签到、贪婪模式） |
+| `command_fishing.py` | 1201 | 钓鱼核心（随机算法、技能特效、幸运事件、签到、贪婪与研究保底） |
 | `command_equipment.py` | 132 | 钓竿/鱼饵的查看与装备切换 |
 | `command_economy.py` | 241 | 卖鱼、商店、购买、刷新商店、商店升级 |
 | `command_social.py` | 228 | 赠送金币/渔获/鱼饵/钓竿，含事务回滚 |
 | `command_auction.py` | 565 | 拍卖行浏览/搜索/上架/出售/取消/购买（支持钓竿/鱼饵/渔获/附魔券/道具券） |
 | `command_enchant.py` | 352 | 随机附魔、技能升级、定向附魔 |
 | `command_achievements.py` | 57 | 成就列表与进度查询 |
-| `command_info.py` | 439 | 帮助、背包、等级、图鉴、冷却、排行榜 |
+| `command_info.py` | 679 | 帮助、背包、等级、图鉴、研究、冷却、排行榜 |
 | `command_admin.py` | 648 | 管理员查看/加金币/设经验/加钓竿/全服发放/日志审计 |
-| `fish_data.py` | 514 | 所有静态游戏数据与查询/计算函数 |
-| `models.py` | 713 | `UserData` 数据模型（属性访问器、业务方法、数据迁移） |
+| `fish_data.py` | 562 | 所有静态游戏数据与查询/计算函数 |
+| `models.py` | 775 | `UserData` 数据模型（属性访问器、业务方法、数据迁移） |
 | `storage.py` | 214 | `StorageManager` K-V 持久化、排行榜、拍卖行数据 |
 | `utils.py` | 370 | 格式化、价值计算、商店生成、加权随机等纯工具函数 |
-| `llm_tools.py` | 660 | 25 个 FunctionTool 的 dataclass 定义 |
+| `llm_tools.py` | 682 | 26 个 FunctionTool 的 dataclass 定义 |
 | `fuzzy_utils.py` | 50 | 模糊命令文本规范化、候选词与参数拆分 |
 | `backpack_renderer.py` | 444 | 背包与钓竿结构化图片模板 |
 | `market_renderer.py` | 195 | 商店与拍卖行结构化图片模板 |
-| `gallery_renderer.py` | 284 | 鱼饵、图鉴与成就结构化图片模板 |
-| `fishing_renderer.py` | 300 | 普通钓鱼、贪婪与失败状态图片模板 |
+| `gallery_renderer.py` | 321 | 鱼饵、图鉴与成就结构化图片模板 |
+| `fishing_renderer.py` | 391 | 普通钓鱼、贪婪、失败状态与海洋研究图片模板 |
 | `result_renderer.py` | 245 | 通用文本结果图片模板与 T2I 故障识别 |
 | `fish_data_admin.html` | - | 独立 HTML 数据管理台（静态文件，未在代码中引用） |
 | `_conf_schema.json` | 44 | 插件配置 Schema |
@@ -277,7 +279,7 @@ self.admin_uids = set(uid.strip() for uid in admin_uids_str.split(",") if uid.st
 
 ### 5.3 测试策略
 
-项目当前有 11 个 `test_*.py` 文件、101 个 `unittest` 用例，覆盖数据模型、管理员命令、用户锁、模糊命令、贪婪机制、稳定性、发布一致性及各结构化图片模板。当前仍没有独立的 AstrBot 集成测试和 CI/CD 配置。
+项目当前有 11 个 `test_*.py` 文件、129 个 `unittest` 用例，覆盖数据模型、管理员命令、用户锁、模糊命令、贪婪与研究机制、鱼池及等级边界、稳定性、发布一致性及各结构化图片模板。当前仍没有独立的 AstrBot 集成测试和 CI/CD 配置。
 
 新增测试时遵循以下原则：
 

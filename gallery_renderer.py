@@ -12,6 +12,8 @@ from .fish_data import (
     get_bait_prefix,
     get_fish_by_id,
     get_prefix_by_id,
+    calc_fish_value,
+    RESEARCH_CONFIG,
 )
 
 
@@ -180,6 +182,39 @@ def build_collection_view(user, sender_name: str, recent_limit: int = 12) -> dic
     valid_entries.sort(key=lambda item: item["first_at"], reverse=True)
     for item in valid_entries:
         item.pop("first_at", None)
+
+    collected_fish = {key.split("#", 1)[0] for key in collection if "#" in key}
+    rod_id = user.current_rod.get("base_id", "")
+    available_prefixes = []
+    for prefix in FISH_PREFIXES:
+        if user.level < int(prefix.get("min_level", 1)):
+            continue
+        if prefix.get("requires_gold_rod") and rod_id not in ("rod_004", "rod_005"):
+            continue
+        if prefix.get("requires_divine_rod") and rod_id != "rod_005":
+            continue
+        if prefix.get("id") == "pref_015" and user.current_rod.get("prefix_id") != "rod_pref_13":
+            continue
+        available_prefixes.append(prefix)
+    researchable = []
+    min_levels = {"common": 1, "rare": 2, "legendary": 5, "mythic": 6}
+    spendable = user.get_spendable_exp()
+    for fish in FISH_TYPES:
+        rarity = fish.get("rarity", "common")
+        cost = RESEARCH_CONFIG["fish"][rarity]["cost"]
+        if fish["id"] in collected_fish or user.level < min_levels.get(rarity, 1) or cost > spendable:
+            continue
+        if rarity == "mythic" and rod_id not in ("rod_004", "rod_005"):
+            continue
+        best_value = max(
+            (calc_fish_value(fish["id"], prefix["id"], 1) for prefix in available_prefixes),
+            default=int(fish.get("base_price", 0)),
+        )
+        researchable.append({
+            "name": _safe(fish["name"]), "rarity": rarity,
+            "value": _number(best_value), "cost": _number(cost),
+        })
+    researchable.sort(key=lambda item: int(item["value"].replace(",", "")), reverse=True)
     return {
         "user_name": _safe(sender_name or "垂钓者"),
         "collected": collected_count,
@@ -187,6 +222,7 @@ def build_collection_view(user, sender_name: str, recent_limit: int = 12) -> dic
         "percent": round(overall_percent, 2),
         "rarities": rarity_stats,
         "recent": valid_entries[:max(0, int(recent_limit))],
+        "researchable": researchable[:5],
     }
 
 
@@ -261,9 +297,10 @@ COLLECTION_IMAGE_TEMPLATE = r"""
 .rarities{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:12px}.rarity{padding:10px;border:1px solid #d2e8f2;border-radius:11px;background:#fbfdfe}.rarity-name{font-weight:900}.rarity-count{margin-top:4px;font-size:17px;font-weight:900}.rarity-pct{margin-top:1px;color:#718995;font-size:11px}
 .common{color:#26343b}.rare{color:#1478c9}.legendary{color:#d52f45}.mythic{color:#8438b5}.ancient{color:#a76d00}
 .section-title{margin:16px 0 8px;font-size:16px;font-weight:900;color:#153746}.recent{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}.item{min-width:0;padding:9px 11px;border:1px solid #d5e8f1;border-radius:10px;background:#fbfdfe}
+.research-list{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px}.research-item{padding:9px 11px;border:1px solid #bddff0;border-radius:10px;background:linear-gradient(145deg,#eef9ff,#fff)}.research-meta{display:flex;justify-content:space-between;gap:6px;margin-top:4px;color:#63808e;font-size:10px}
 .fish-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:900}.fish-meta{display:flex;justify-content:space-between;gap:8px;margin-top:3px;color:#718894;font-size:11px}
 .empty{grid-column:1/-1;padding:36px;text-align:center;border:1px dashed #bddce9;border-radius:13px;color:#78909c;background:#f8fcfe}
-</style></head><body><article class="sheet"><header class="header"><div class="title">📖 钓鱼图鉴</div><div class="subtitle">{{ user_name }} 的收藏记录</div></header><main class="body"><section class="overall"><div class="overall-head"><span class="overall-value">已点亮 {{ collected }} / {{ total }}</span><span class="overall-pct">{{ percent }}%</span></div><div class="progress"><div class="fill" style="width:{{ percent }}%"></div></div></section><section class="rarities">{% for rarity in rarities %}<article class="rarity"><div class="rarity-name {{ rarity.rarity }}">{{ rarity.icon }} {{ rarity.name }}</div><div class="rarity-count {{ rarity.rarity }}">{{ rarity.count }} / {{ rarity.total }}</div><div class="rarity-pct">完成 {{ rarity.percent }}%</div></article>{% endfor %}</section><div class="section-title">📜 最近点亮</div><section class="recent">{% for fish in recent %}<article class="item"><div class="fish-name {{ fish.rarity }}{% if fish.ancient %} ancient{% endif %}">{{ fish.name }}</div><div class="fish-meta"><span>累计捕获 × {{ fish.count }}</span><span>{{ fish.date }}</span></div></article>{% else %}<div class="empty">首次钓到渔获后，收藏记录会在这里亮起</div>{% endfor %}</section></main></article></body></html>
+</style></head><body><article class="sheet"><header class="header"><div class="title">📖 钓鱼图鉴</div><div class="subtitle">{{ user_name }} 的收藏记录</div></header><main class="body"><section class="overall"><div class="overall-head"><span class="overall-value">已点亮 {{ collected }} / {{ total }}</span><span class="overall-pct">{{ percent }}%</span></div><div class="progress"><div class="fill" style="width:{{ percent }}%"></div></div></section><section class="rarities">{% for rarity in rarities %}<article class="rarity"><div class="rarity-name {{ rarity.rarity }}">{{ rarity.icon }} {{ rarity.name }}</div><div class="rarity-count {{ rarity.rarity }}">{{ rarity.count }} / {{ rarity.total }}</div><div class="rarity-pct">完成 {{ rarity.percent }}%</div></article>{% endfor %}</section><div class="section-title">🔬 当前可研究鱼种 · 按最高价值排序</div><section class="research-list">{% for fish in researchable %}<article class="research-item"><div class="fish-name {{ fish.rarity }}">{{ fish.name }}</div><div class="research-meta"><span>最高 {{ fish.value }} 金币</span><span>需 {{ fish.cost }} 经验</span></div></article>{% else %}<div class="empty">当前经验、等级和装备范围内暂无未点亮鱼种</div>{% endfor %}</section><div class="section-title">📜 最近点亮</div><section class="recent">{% for fish in recent %}<article class="item"><div class="fish-name {{ fish.rarity }}{% if fish.ancient %} ancient{% endif %}">{{ fish.name }}</div><div class="fish-meta"><span>累计捕获 × {{ fish.count }}</span><span>{{ fish.date }}</span></div></article>{% else %}<div class="empty">首次钓到渔获后，收藏记录会在这里亮起</div>{% endfor %}</section></main></article></body></html>
 """
 
 

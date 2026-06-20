@@ -14,6 +14,7 @@ from .fish_data import (
     calc_rod_value, calc_bait_value, calc_fish_value,
     get_rod_prefix, get_bait_prefix, scramble_text, add_pig_noise,
     SPECIAL_PREFIX_BALANCE, SPECIAL_ROD_BALANCE, get_effective_rod_skills,
+    apply_rarity_bonus, RESEARCH_WEIGHT_MULTIPLIERS, RESEARCH_PITY_STEP,
 )
 from .storage import StorageManager
 import random
@@ -55,6 +56,26 @@ GREEDY_CONFIG = {
         "cd_penalty": 0.30,
     },
 }
+
+# 远航本身已增加大量冷却；额外渔获每第 5 次由航程补给承担鱼饵，避免
+# 高经验鱼饵触发更长远航后反而因连续消耗而稳定亏损。
+VOYAGE_FREE_BAIT_INTERVAL = 5
+
+
+def is_voyage_bait_supplied(attempt: int) -> bool:
+    """远航额外捕获每第 5 次使用航程补给，不消耗玩家鱼饵。"""
+    return attempt > 0 and attempt % VOYAGE_FREE_BAIT_INTERVAL == 0
+
+
+def format_research_update(update: dict) -> str:
+    """格式化研究命中或保底进度提示。"""
+    if not update:
+        return ""
+    if update.get("paused"):
+        return f"⏸️ {update.get('reason', '当前装备无法完成研究')}，研究进度已暂停"
+    if update.get("completed"):
+        return f"🔬 研究完成！成功发现目标“{update['target_name']}”"
+    return f"🔬 研究推进：“{update['target_name']}”剩余 {update['remaining']} 次保底"
 
 
 class FishingCommands(CommandBase):
@@ -234,7 +255,10 @@ class FishingCommands(CommandBase):
                     if not user.remove_bait(selected_bait["base_id"], selected_bait["prefix_id"], 1):
                         break
 
-                result = self._do_fish_once(user, rod, selected_bait, jealous_bonus=jealous_bonus)
+                result = self._do_fish_once(
+                    user, rod, selected_bait, jealous_bonus=jealous_bonus,
+                    advance_research=(i == 0),
+                )
                 if result is None:
                     await self.storage.save_user(user)
                     return "👑 当前等级过低，傲慢的钓竿无法锁定稀有以上渔获，请提升等级后再试！"
@@ -253,7 +277,10 @@ class FishingCommands(CommandBase):
                     if not (is_gold_rod or is_carrot_rod or lucky_events["free_bait"]):
                         if not user.remove_bait(selected_bait["base_id"], selected_bait["prefix_id"], 1):
                             break
-                    result = self._do_fish_once(user, rod, selected_bait, jealous_bonus=jealous_bonus)
+                    result = self._do_fish_once(
+                        user, rod, selected_bait, jealous_bonus=jealous_bonus,
+                        advance_research=False,
+                    )
                     if result:
                         fish_results.append(result)
                         user.add_fish(result["fish_id"], result["prefix_id"], 1)
@@ -267,18 +294,28 @@ class FishingCommands(CommandBase):
             voyage_extra_cd = 0
             voyage_results = []
             voyage_count = 0
+            voyage_free_bait_count = 0
             if voyage_val > 0 and random.random() < voyage_val:
                 voyage_count = min(total_exp // 20, 50)
                 if voyage_count > 0:
                     voyage_triggered = True
                     # 每次额外钓鱼增加约 7.7% 基础冷却，高风险高回报
                     voyage_extra_cd = voyage_count * (self.star.fishing_cooldown // 13)
+                    voyage_attempt = 0
                     for _ in range(voyage_count):
                         for _ in range(unit_catch):
-                            if not is_gold_rod and not is_carrot_rod and not lucky_events["free_bait"]:
+                            voyage_attempt += 1
+                            supplied_bait = is_voyage_bait_supplied(voyage_attempt)
+                            if supplied_bait:
+                                voyage_free_bait_count += 1
+                            if (not supplied_bait and not is_gold_rod and not is_carrot_rod
+                                    and not lucky_events["free_bait"]):
                                 if not user.remove_bait(selected_bait["base_id"], selected_bait["prefix_id"], 1):
                                     break
-                            result = self._do_fish_once(user, rod, selected_bait, jealous_bonus=jealous_bonus)
+                            result = self._do_fish_once(
+                                user, rod, selected_bait, jealous_bonus=jealous_bonus,
+                                advance_research=False,
+                            )
                             if result:
                                 voyage_results.append(result)
                                 user.add_fish(result["fish_id"], result["prefix_id"], 1)
@@ -450,6 +487,12 @@ class FishingCommands(CommandBase):
             
             # ===== 构建结果 =====
             event_msgs = []
+            research_update = next(
+                (r.get("research_update") for r in all_results if r.get("research_update")), {}
+            )
+            research_msg = format_research_update(research_update)
+            if research_msg:
+                event_msgs.append(research_msg)
             if lucky_events["free_bait"]:
                 event_msgs.append("✨ 本次钓鱼不消耗鱼饵！")
             if lucky_events["double_fish"]:
@@ -459,7 +502,8 @@ class FishingCommands(CommandBase):
             if tide_triggered:
                 event_msgs.append("🌊 潮汐之力涌动！")
             if voyage_triggered:
-                event_msgs.append(f"🧭 远航触发！额外{voyage_count}次")
+                supply_text = f"，航程补给节省{voyage_free_bait_count}个鱼饵" if voyage_free_bait_count else ""
+                event_msgs.append(f"🧭 远航触发！额外{voyage_count}次{supply_text}")
             if jealous_bonus > 0:
                 event_msgs.append(f"💢 嫉妒加成 +{int(jealous_bonus*100)}%")
             if jealous_cd_penalty:
@@ -561,8 +605,49 @@ class FishingCommands(CommandBase):
             
             return result
 
+    @staticmethod
+    def _choose_with_research(user, pool: list, target_type: str,
+                              advance_research: bool) -> tuple:
+        """从候选池抽取目标；研究只在一次主动垂钓的首条渔获推进。"""
+        state = user.get_research() if advance_research else {}
+        if state.get("target_type") == target_type:
+            target_id = state.get("target_id")
+        elif state.get("target_type") == "combo":
+            target_id = state.get("fish_id" if target_type == "fish" else "prefix_id")
+        else:
+            target_id = None
+        target_entry = next((entry for entry in pool if entry[0].get("id") == target_id), None)
+
+        if not target_entry:
+            selected, _ = random.choices(pool, weights=[weight for _, weight in pool], k=1)[0]
+            return selected, {}
+
+        if int(state.get("remaining", 0)) <= 1:
+            selected = target_entry[0]
+        else:
+            rarity = state.get("target_rarity", target_entry[0].get("rarity", "common"))
+            failed_attempts = max(
+                0, int(state.get("total", 0)) - int(state.get("remaining", 0))
+            )
+            multiplier = RESEARCH_WEIGHT_MULTIPLIERS.get(rarity, 4.0) + (
+                failed_attempts * RESEARCH_PITY_STEP
+            )
+            if state.get("target_type") == "combo":
+                multiplier **= 0.5
+            boosted_pool = [
+                (item, weight * multiplier if item.get("id") == target_id else weight)
+                for item, weight in pool
+            ]
+            selected, _ = random.choices(
+                boosted_pool, weights=[weight for _, weight in boosted_pool], k=1
+            )[0]
+        if state.get("target_type") == "combo":
+            return selected, {}
+        return selected, user.advance_research(selected.get("id") == target_id)
+
     def _do_fish_once(self, user, rod, selected_bait=None, jealous_bonus: float = 0.0,
-                      extra_rarity_bonus: float = 0.0, price_multiplier: float = 1.0) -> dict:
+                      extra_rarity_bonus: float = 0.0, price_multiplier: float = 1.0,
+                      advance_research: bool = True) -> dict:
         """执行一次钓鱼随机计算，返回结果字典；若无可选池则返回None
         selected_bait=None 时表示使用金币钓竿（不消耗鱼饵，按金币加成品质）
         jealous_bonus: 嫉妒前缀的额外稀有度加成
@@ -616,16 +701,18 @@ class FishingCommands(CommandBase):
             # 傲慢的钓竿睥睨：保底稀有，但不再直接保底传说，避免收益断层。
             if effective_skills.get("arrogant") and fish["rarity"] == "common":
                 continue
-            if fish["rarity"] in ("rare", "legendary", "mythic"):
-                weight = fish["weight"] * (1 + rod_rarity_bonus + bait_quality_bonus)
-            else:
-                weight = fish["weight"]
+            weight = apply_rarity_bonus(
+                fish["weight"], fish["rarity"],
+                rod_rarity_bonus + bait_quality_bonus,
+            )
             fish_pool.append((fish, weight))
         
         if not fish_pool:
             return None
         
-        selected_fish, _ = random.choices(fish_pool, weights=[w for _, w in fish_pool], k=1)[0]
+        selected_fish, fish_research_update = self._choose_with_research(
+            user, fish_pool, "fish", advance_research,
+        )
         
         # 选择前缀
         prefix_pool = []
@@ -636,18 +723,92 @@ class FishingCommands(CommandBase):
                 continue
             if prefix.get("requires_divine_rod") and rod["base_id"] != "rod_005":
                 continue
-            prefix_pool.append((prefix, prefix["weight"]))
+            prefix_weight = apply_rarity_bonus(
+                prefix["weight"], prefix["rarity"],
+                rod_rarity_bonus + bait_quality_bonus,
+                prefix=True,
+            )
+            prefix_pool.append((prefix, prefix_weight))
         
         if not prefix_pool:
             return None
         
-        selected_prefix = random.choices([p for p, _ in prefix_pool], weights=[w for _, w in prefix_pool], k=1)[0]
-        
-        # 诅咒钓竿专属：10% 概率钓到"被诅咒的"鱼
-        if effective_skills.get("cursed") and random.random() < SPECIAL_PREFIX_BALANCE["cursed"]["cursed_fish_chance"]:
+        prefix_state = user.get_research() if advance_research else {}
+        prefix_target_id = (
+            prefix_state.get("prefix_id")
+            if prefix_state.get("target_type") == "combo"
+            else prefix_state.get("target_id")
+        )
+        prefix_target_in_pool = any(
+            prefix.get("id") == prefix_target_id for prefix, _ in prefix_pool
+        )
+        research_guaranteed = (
+            prefix_state.get("target_type") in ("prefix", "combo")
+            and prefix_target_in_pool
+            and int(prefix_state.get("remaining", 0)) <= 1
+        )
+
+        # 最后一次研究保底优先于诅咒覆盖，确保承诺的保底次数不会被延后。
+        if research_guaranteed:
+            selected_prefix, prefix_research_update = self._choose_with_research(
+                user, prefix_pool, "prefix", advance_research,
+            )
+        # 诅咒钓竿专属：概率钓到"被诅咒的"鱼
+        elif effective_skills.get("cursed") and random.random() < SPECIAL_PREFIX_BALANCE["cursed"]["cursed_fish_chance"]:
             cursed_prefix = get_prefix_by_id("pref_015")
             if cursed_prefix:
                 selected_prefix = cursed_prefix
+                prefix_research_update = {}
+                if prefix_state.get("target_type") == "prefix" and prefix_target_in_pool:
+                    prefix_research_update = user.advance_research(
+                        selected_prefix.get("id") == prefix_state.get("target_id")
+                    )
+            else:
+                selected_prefix, prefix_research_update = self._choose_with_research(
+                    user, prefix_pool, "prefix", advance_research,
+                )
+        else:
+            selected_prefix, prefix_research_update = self._choose_with_research(
+                user, prefix_pool, "prefix", advance_research,
+            )
+
+        combo_research_update = {}
+        if advance_research and prefix_state.get("target_type") == "combo":
+            fish_target_in_pool = any(
+                fish.get("id") == prefix_state.get("fish_id") for fish, _ in fish_pool
+            )
+            if fish_target_in_pool and prefix_target_in_pool:
+                combo_research_update = user.advance_research(
+                    selected_fish.get("id") == prefix_state.get("fish_id")
+                    and selected_prefix.get("id") == prefix_state.get("prefix_id")
+                )
+
+        research_update = fish_research_update or prefix_research_update or combo_research_update
+        if advance_research and prefix_state and not research_update:
+            target_type = prefix_state.get("target_type")
+            fish_target_id = prefix_state.get("fish_id") or prefix_state.get("target_id")
+            prefix_target_id = prefix_state.get("prefix_id") or prefix_state.get("target_id")
+            fish_reachable = any(fish.get("id") == fish_target_id for fish, _ in fish_pool)
+            prefix_reachable = any(prefix.get("id") == prefix_target_id for prefix, _ in prefix_pool)
+            paused = (
+                (target_type == "fish" and not fish_reachable)
+                or (target_type == "prefix" and not prefix_reachable)
+                or (target_type == "combo" and (not fish_reachable or not prefix_reachable))
+            )
+            if paused:
+                target_prefix = get_prefix_by_id(prefix_target_id) if target_type != "fish" else None
+                if target_prefix and target_prefix.get("id") == "pref_015":
+                    reason = "当前钓竿缺少诅咒前缀"
+                elif target_prefix and target_prefix.get("requires_divine_rod"):
+                    reason = "当前研究需要神级钓竿"
+                elif target_prefix and target_prefix.get("requires_gold_rod"):
+                    reason = "当前研究需要金色或神级钓竿"
+                else:
+                    reason = "当前钓竿或等级无法获得研究目标"
+                research_update = {
+                    "paused": True, "reason": reason,
+                    "target_name": prefix_state.get("target_name", "研究目标"),
+                }
         
         price = int(selected_fish["base_price"] * selected_prefix["price_multiplier"])
         # 应用贪婪售价倍率
@@ -665,6 +826,7 @@ class FishingCommands(CommandBase):
             "rarity": selected_fish["rarity"],
             "rarity_emoji": rarity_emoji,
             "desc": selected_fish.get("desc", ""),
+            "research_update": research_update,
         }
 
     async def _handle_greedy_start(self, event, user, rod, selected_bait, greedy_mode: str,
@@ -685,11 +847,18 @@ class FishingCommands(CommandBase):
 
         fish_results = []
 
+        research_advanced = False
+
         def catch_once() -> bool:
             """钓取一条鱼并记录到贪欲结晶的原始渔获。"""
-            result = self._do_fish_once(user, rod, selected_bait, jealous_bonus=jealous_bonus)
+            nonlocal research_advanced
+            result = self._do_fish_once(
+                user, rod, selected_bait, jealous_bonus=jealous_bonus,
+                advance_research=not research_advanced,
+            )
             if result is None:
                 return False
+            research_advanced = True
             fish_results.append(result)
             user.increment_fish_count()
             user.add_rarity_count(result["rarity"])
@@ -719,6 +888,13 @@ class FishingCommands(CommandBase):
                 for _ in range(voyage_count * base_count):
                     catch_once()
                 event_msgs.append(f"🧭 远航触发！额外{voyage_count * base_count}次")
+
+        research_update = next(
+            (r.get("research_update") for r in fish_results if r.get("research_update")), {}
+        )
+        research_msg = format_research_update(research_update)
+        if research_msg:
+            event_msgs.append(research_msg)
 
         chip = self._build_greedy_chip(fish_results)
         # 首层同样享受收益倍率，确保立即收杆也有合理回报。
@@ -990,6 +1166,9 @@ class FishingCommands(CommandBase):
                 "",
                 "可选操作：/收杆 结算 或 /贪婪 继续",
             ]
+            research_msg = format_research_update(result.get("research_update", {}))
+            if research_msg:
+                result_lines.insert(2, research_msg)
             result_text = "\n".join(result_lines)
             for ach in new_achievements:
                 result_text += f"\n\n🏅 解锁成就 [{ach['name']}]！\n💰 +{ach.get('reward_coins', 0)} 金币 📈 +{ach.get('reward_exp', 0)} 经验"

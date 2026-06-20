@@ -417,6 +417,32 @@ class FishingCollectionTool(FunctionTool[AstrAgentContext]):
 
 
 @dataclass
+class FishingResearchTool(FunctionTool[AstrAgentContext]):
+    """开始、查看或取消海洋研究"""
+    name: str = "fishing_research"
+    description: str = (
+        "使用多余经验研究未点亮目标，提高出现率并提供递增软保底，且不会导致掉级。"
+        "品级或鱼名会启动鱼种研究，前缀名会启动前缀研究；同时提供鱼名和前缀（如龙鱼 金色）"
+        "或组合ID会锁定完整图鉴组合。宽范围候选优先选择高价值目标。留空或传status查看进度；传cancel取消。"
+    )
+    parameters: dict = Field(default_factory=lambda: {
+        "type": "object",
+        "properties": {
+            "target": {
+                "type": "string",
+                "description": "研究目标；可填品级、鱼名、前缀名、鱼名+前缀或组合ID，status查看，cancel取消",
+            },
+        },
+        "required": [],
+    })
+    plugin: Any = None
+
+    async def call(self, context: ContextWrapper[AstrAgentContext], target: str = "", **kwargs):
+        event = context.context.event
+        return await self.plugin._cmd_with_scramble(event, "cmd_research", target)
+
+
+@dataclass
 class FishingAuctionTool(FunctionTool[AstrAgentContext]):
     """拍卖行操作"""
     name: str = "fishing_auction"

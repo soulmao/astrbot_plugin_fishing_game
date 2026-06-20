@@ -52,6 +52,19 @@ FISH_TYPES = [
      "desc": "生活在海底火山口的庞然大物，甲壳如钢铁般坚硬"},
     {"id": "fish_036", "name": "北海巨妖", "rarity": "mythic", "base_price": 3200, "weight": 0.03,
      "desc": "北欧神话中的克拉肯，沉睡时会被误认为是一座小岛"},
+    # ========== 扩充中高稀有度鱼池 ==========
+    # 稀有类：提高中期鱼池多样性和稀有渔获的实际出现占比
+    {"id": "fish_037", "name": "石斑鱼", "rarity": "rare", "base_price": 65, "weight": 7},
+    {"id": "fish_038", "name": "河豚", "rarity": "rare", "base_price": 70, "weight": 6},
+    {"id": "fish_039", "name": "马鲛鱼", "rarity": "rare", "base_price": 75, "weight": 6},
+    {"id": "fish_040", "name": "鲟鱼", "rarity": "rare", "base_price": 80, "weight": 5},
+    {"id": "fish_041", "name": "剑鱼", "rarity": "rare", "base_price": 90, "weight": 5},
+    {"id": "fish_042", "name": "旗鱼", "rarity": "rare", "base_price": 100, "weight": 4},
+    # 传说类：保持低概率，但让高阶鱼池不再被少数鱼种垄断
+    {"id": "fish_043", "name": "蓝鳍金枪鱼", "rarity": "legendary", "base_price": 420, "weight": 0.8},
+    {"id": "fish_044", "name": "皇带鱼", "rarity": "legendary", "base_price": 450, "weight": 0.7},
+    {"id": "fish_045", "name": "巨骨舌鱼", "rarity": "legendary", "base_price": 480, "weight": 0.6},
+    {"id": "fish_046", "name": "姥鲨", "rarity": "legendary", "base_price": 500, "weight": 0.5},
 ]
 
 # 鱼名前缀
@@ -194,6 +207,52 @@ BAIT_PREFIXES = [
     {"id": "bait_pref_09", "name": "古龙收藏的", "multiplier": 2.8, "min_level": 7, "event_bonus": 0.20},
 ]
 
+# 稀有度加成不再对所有高级渔获使用同一倍率。越高品级获得越强的
+# 权重放大，避免“+35% 稀有度”最终只带来零点几个百分点的传说提升。
+FISH_RARITY_BONUS_SCALES = {
+    "common": 0.0,
+    "rare": 2.5,
+    "legendary": 8.0,
+    "mythic": 15.0,
+}
+
+# 鱼名前缀也受钓竿和鱼饵的品质加成影响，让高级装备不仅更容易钓到
+# 高品级鱼，也更容易出现真正有价值的金色、传奇、神话等前缀。
+PREFIX_RARITY_BONUS_SCALES = {
+    "common": 0.0,
+    "rare": 1.5,
+    "legendary": 5.0,
+    "mythic": 8.0,
+}
+
+# 海洋研究：消耗当前等级门槛以上的经验，定向提高尚未收集目标的权重。
+# remaining 按玩家主动垂钓指令计数；幸运、丰收、远航产生的额外渔获不重复扣次数。
+RESEARCH_CONFIG = {
+    "fish": {
+        "common": {"cost": 1000, "attempts": 5},
+        "rare": {"cost": 5000, "attempts": 10},
+        "legendary": {"cost": 20000, "attempts": 20},
+        "mythic": {"cost": 60000, "attempts": 30},
+    },
+    "prefix": {
+        "common": {"cost": 3000, "attempts": 10},
+        "rare": {"cost": 10000, "attempts": 15},
+        "legendary": {"cost": 30000, "attempts": 25},
+        "mythic": {"cost": 100000, "attempts": 50},
+    },
+}
+
+# 不同档次研究使用不同基础倍率；连续未命中时每次再增加 0.5 倍，增强研究存在感。
+RESEARCH_WEIGHT_MULTIPLIERS = {
+    "common": 4.0,
+    "rare": 6.0,
+    "legendary": 8.0,
+    "mythic": 10.0,
+}
+RESEARCH_PITY_STEP = 0.5
+# 兼容旧代码或第三方扩展的常量引用。
+RESEARCH_WEIGHT_MULTIPLIER = RESEARCH_WEIGHT_MULTIPLIERS["rare"]
+
 # 等级配置
 LEVELS = [
     {"level": 1, "name": "新手渔夫", "exp_required": 0},
@@ -208,6 +267,9 @@ LEVELS = [
     {"level": 10, "name": "深渊行者", "exp_required": 120000},
     {"level": 11, "name": "远古钓者", "exp_required": 300000},
     {"level": 12, "name": "钓鱼之神", "exp_required": 800000},
+    {"level": 13, "name": "星海钓神", "exp_required": 1600000},
+    {"level": 14, "name": "万象渔圣", "exp_required": 3200000},
+    {"level": 15, "name": "深海主宰", "exp_required": 6400000},
 ]
 
 # 商店商品定义（用于随机生成）
@@ -354,11 +416,27 @@ def get_rod_shop_price(base_id: str) -> int:
 
 
 def get_bait_shop_price(base_id: str) -> int:
-    """从 SHOP_ITEMS 查鱼饵基础商店单价"""
+    """从 SHOP_ITEMS 查鱼饵基础商店整组售价"""
     for bait in SHOP_ITEMS.get("baits", []):
         if bait["base_id"] == base_id:
             return bait["price"]
     return 0
+
+
+def get_bait_shop_quantity(base_id: str) -> int:
+    """从 SHOP_ITEMS 查询每次购买实际获得的鱼饵数量。"""
+    for bait in SHOP_ITEMS.get("baits", []):
+        if bait["base_id"] == base_id:
+            return max(1, int(bait.get("quantity", 1)))
+    return 1
+
+
+def apply_rarity_bonus(weight: float, rarity: str, bonus: float,
+                       prefix: bool = False) -> float:
+    """按品级放大候选权重；传说和神话比普通稀有获得更强提升。"""
+    scales = PREFIX_RARITY_BONUS_SCALES if prefix else FISH_RARITY_BONUS_SCALES
+    scale = scales.get(rarity, 0.0)
+    return weight * (1.0 + max(0.0, bonus) * scale)
 
 
 def calc_rod_value(base_id: str, prefix_id: str, skills: dict = None) -> int:
@@ -400,11 +478,11 @@ def add_pig_noise(text: str, chance: float = 0.3) -> str:
 
 
 def calc_bait_value(base_id: str, prefix_id: str, count: int) -> int:
-    """鱼饵价值 = 商店单价 × 前缀倍率 × 数量"""
+    """鱼饵价值 = 整组售价 × 前缀倍率 × 持有数量 ÷ 每组数量。"""
     bait_shop = get_bait_shop_price(base_id)
+    shop_quantity = get_bait_shop_quantity(base_id)
     prefix = get_bait_prefix(prefix_id)
-    unit_price = int(bait_shop * prefix["multiplier"])
-    return unit_price * count
+    return int(bait_shop * prefix["multiplier"] * max(0, count) / shop_quantity)
 
 
 def calc_fish_value(fish_id: str, prefix_id: str, count: int) -> int:
@@ -492,6 +570,7 @@ ACHIEVEMENTS = [
     {"id": "level_9", "name": "海王", "category": "level", "target": 9, "reward_coins": 10000, "reward_exp": 5000},
     {"id": "level_11", "name": "远古钓者", "category": "level", "target": 11, "reward_coins": 50000, "reward_exp": 20000},
     {"id": "level_12", "name": "钓鱼之神", "category": "level", "target": 12, "reward_coins": 200000, "reward_exp": 100000},
+    {"id": "level_15", "name": "深海主宰", "category": "level", "target": 15, "reward_coins": 500000, "reward_exp": 250000},
 
     # 图鉴
     {"id": "collector_10", "name": "初识图鉴", "desc": "点亮 10 个图鉴条目（含不同前缀）", "category": "collection", "target": 10, "reward_coins": 100, "reward_exp": 50},

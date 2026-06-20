@@ -33,9 +33,9 @@ class ReleaseReadinessTests(unittest.TestCase):
             plugin["version"],
             register_match.group(1),
         }
-        self.assertEqual(versions, {"V4.6.1"})
-        self.assertIn("version-V4.6.1", readme)
-        self.assertIn("### V4.6.1 更新摘要", readme)
+        self.assertEqual(versions, {"V4.7.0"})
+        self.assertIn("version-V4.7.0", readme)
+        self.assertIn("### V4.7.0 更新摘要", readme)
 
     def test_json_release_files_are_valid(self):
         plugin = json.loads(_read("plugin.json"))
@@ -52,11 +52,15 @@ class ReleaseReadinessTests(unittest.TestCase):
     def test_docs_match_current_test_and_market_layout(self):
         agents = _read("AGENTS.md")
         readme = _read("README.md")
-        self.assertIn("101 个 `unittest` 用例", agents)
+        help_source = _read("command_info.py")
+        self.assertIn("129 个 `unittest` 用例", agents)
         self.assertNotIn("当前项目没有单元测试", agents)
-        self.assertIn("`main.py` | 840", agents)
+        self.assertIn("`main.py` | 844", agents)
         self.assertIn("商店按四列", readme)
         self.assertIn("拍卖行按三列", readme)
+        self.assertIn("钓鱼游戏帮助 · V4.7.0", help_source)
+        self.assertIn("最高 Lv.15", help_source)
+        self.assertIn("46 种鱼 × 15 种前缀", help_source)
 
     def test_llm_auction_price_and_greedy_descriptions_are_unambiguous(self):
         tools = _read("llm_tools.py")
